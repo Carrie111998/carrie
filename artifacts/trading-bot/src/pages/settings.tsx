@@ -472,8 +472,8 @@ export default function Settings() {
               <Toggle label="Auto-claim winnings" hint="Collects winning bets every 5 minutes." checked={draft.predictionAutoRedeem} onChange={(v) => set("predictionAutoRedeem", v)} />
             </div>
             <div>
-              <div className="mb-2 text-sm font-medium">Check the market the bot will use</div>
-              <MarketFinder query={draft.predictionSymbol.replace("USDT", "")} />
+              <div className="mb-2 text-sm font-medium">Markets the bot bets on</div>
+              <MarketFinder />
             </div>
           </div>
         </Panel>

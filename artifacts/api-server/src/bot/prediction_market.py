@@ -134,7 +134,13 @@ def find_markets(data: Any) -> List[dict]:
             market_id = d.get("marketId") or next((p.get("marketId") for p in reversed(parents) if p.get("marketId")), None)
             tok = str(d["tokenId"])
             if not any(o["tokenId"] == tok for o in t["outcomes"]):
-                t["outcomes"].append({"tokenId": tok, "label": label, "marketId": str(market_id) if market_id else None})
+                price = d.get("price") if d.get("price") not in (None, "") else d.get("chance")
+                try:
+                    price = float(price) if price is not None else None
+                except (TypeError, ValueError):
+                    price = None
+                t["outcomes"].append({"tokenId": tok, "label": label, "marketId": str(market_id) if market_id else None,
+                                      "price": price})
     return list(topics.values())
 
 

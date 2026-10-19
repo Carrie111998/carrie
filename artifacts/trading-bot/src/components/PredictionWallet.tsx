@@ -5,7 +5,6 @@ import QRCode from "qrcode";
 import { useBot } from "@/hooks/useBot";
 import { api, type MarketSearch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { fmtUsd } from "@/components/bits";
 import { cn } from "@/lib/utils";
 
@@ -163,57 +162,48 @@ export function PredictionWallet() {
 }
 
 /** Shows which Binance prediction market the bot would bet on for the current slot. */
-export function MarketFinder({ query }: { query: string }) {
+export function MarketFinder() {
   const { run } = useBot();
-  const [q, setQ] = useState(query);
   const [res, setRes] = useState<MarketSearch | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => setQ(query), [query]);
+  const pct = (o?: { price?: number | null } | null) => (o?.price != null ? `${Math.round(o.price * 100)}¢` : "—");
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="BTC" />
-        <Button
-          variant="secondary"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            await run("Market search failed", async () => setRes(await api<MarketSearch>(`/prediction/markets?query=${encodeURIComponent(q)}`)));
-            setBusy(false);
-          }}
-        >
-          <Search className="h-4 w-4 mr-1.5" /> {busy ? "Searching…" : "Find markets"}
-        </Button>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Shows the exact Binance Prediction market and round each real bet goes to right now — the same “BTC / ETH / BNB Up or Down
+        5m / 15m” markets you see in the Binance app, found the same way the bot finds them when it bets.
+      </p>
+      <Button
+        variant="secondary"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          await run("Market check failed", async () => setRes(await api<MarketSearch>("/prediction/markets")));
+          setBusy(false);
+        }}
+      >
+        <Search className="h-4 w-4 mr-1.5" /> {busy ? "Checking Binance…" : "Check markets now"}
+      </Button>
       {res && !res.ok && <div className="text-xs text-red-700">{res.error}</div>}
       {res?.ok && (
         <div className="space-y-2 text-xs">
-          <div className={cn("rounded-md px-3 py-2", res.match ? "bg-emerald-500/10 text-emerald-700" : "bg-red-500/10 text-red-700")}>
-            {res.match ? (
-              <>
-                ✓ Current slot (ends {hhmm(res.slotEnd!)}) → <b>{res.match.title}</b>. UP bets buy “{res.match.up?.label ?? "not found"}”, DOWN bets buy “
-                {res.match.down?.label ?? "not found"}”.
-              </>
-            ) : (
-              <>✗ No market found that ends at {res.slotEnd ? hhmm(res.slotEnd) : "—"} — bets will be skipped. Try another search word (e.g. “Bitcoin”).</>
-            )}
-          </div>
-          <div className="text-muted-foreground">{res.count} markets found. Soonest to end:</div>
-          <div className="max-h-64 overflow-y-auto divide-y divide-border rounded-md border border-border">
-            {(res.markets ?? []).map((m) => (
-              <div key={m.marketTopicId} className="px-3 py-2">
-                <div className="font-medium">{m.title || `Market ${m.marketTopicId}`}</div>
-                <div className="text-muted-foreground">
-                  ends {m.endTime ? new Date(m.endTime).toLocaleString() : "?"} · outcomes: {m.outcomes.map((o) => o.label || "?").join(", ") || "—"}
-                </div>
+          <div className="text-muted-foreground">Current {res.interval} round ends {res.slotEnd ? hhmm(res.slotEnd) : "—"}</div>
+          {(res.rows ?? []).map((r) => (
+            <div key={r.symbol} className={cn("rounded-md px-3 py-2", r.ok ? "bg-emerald-500/10" : "bg-red-500/10")}>
+              <div className="font-medium">
+                {r.ok ? "✓" : "✗"} {r.symbol.replace("USDT", "")} → {r.title ?? "no market"}
               </div>
-            ))}
-          </div>
-          <details>
-            <summary className="cursor-pointer text-muted-foreground">Raw response (for troubleshooting)</summary>
-            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-secondary/60 p-2 text-[10px]">{res.raw}</pre>
-          </details>
+              {r.ok ? (
+                <div className="text-muted-foreground">
+                  Round {r.startTime ? hhmm(r.startTime) : "?"}–{r.endTime ? hhmm(r.endTime) : "?"} · UP bets buy “{r.up?.label}” ({pct(r.up)}) ·
+                  DOWN bets buy “{r.down?.label}” ({pct(r.down)}) · market #{r.marketTopicId}
+                </div>
+              ) : (
+                <div className="text-red-700">{r.error} — real bets on this coin are skipped</div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

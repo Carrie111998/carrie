@@ -247,7 +247,7 @@ router.post("/prediction/redeem", wrap(async (_req, res) => {
 
 router.get("/prediction/markets", wrap(async (req, res) => {
   const query = String(req.query["query"] ?? "").slice(0, 200);
-  res.json(await engineOf(res).request({ cmd: "prediction_markets", query }, 60_000));
+  res.json(await engineOf(res).request({ cmd: "prediction_markets", query }, 120_000));
 }));
 
 router.get("/trades", wrap(async (req, res) => {

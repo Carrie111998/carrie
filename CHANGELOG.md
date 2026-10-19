@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.3.2 — 2026-10-19
+
+- **"Markets the bot bets on"** (Settings → Prediction Market) replaces the old search box: one button shows, for every coin, the exact Binance Prediction market and round ("BTC Up or Down 5m", round 18:40–18:45) each real bet goes to, with the live Up/Down prices. It uses the same lookup as real bets, so what you see is what the bot bets on.
+
 ## v3.3.1 — 2026-10-19
 
 - **Fixed real bets never being placed** ("current round ends 18:30, not at this slot's close 18:10"): Binance lists each round of a recurring "ETH Up or Down 5m" series as its own market in the detail's timeline. The bot now switches to the round that closes with the current slot instead of the series' newest round.

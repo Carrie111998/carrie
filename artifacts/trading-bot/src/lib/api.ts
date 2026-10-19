@@ -269,15 +269,30 @@ export interface PredictionMarket {
   outcomes: { tokenId: string; label: string }[];
 }
 
+export interface MarketOutcome {
+  tokenId: string;
+  label: string;
+  price?: number | null;
+}
+
+export interface SlotMarketRow {
+  symbol: string;
+  ok: boolean;
+  error?: string;
+  marketTopicId?: string;
+  title?: string;
+  startTime?: number | null;
+  endTime?: number | null;
+  up?: MarketOutcome | null;
+  down?: MarketOutcome | null;
+}
+
 export interface MarketSearch {
   ok: boolean;
   error?: string;
-  query?: string;
   slotEnd?: number;
-  count?: number;
-  markets?: PredictionMarket[];
-  match?: (PredictionMarket & { up: { label: string } | null; down: { label: string } | null }) | null;
-  raw?: string;
+  interval?: string;
+  rows?: SlotMarketRow[];
 }
 
 export interface Slot {

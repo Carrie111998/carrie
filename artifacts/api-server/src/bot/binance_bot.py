@@ -692,34 +692,12 @@ class Bot:
             "shares": None, "avgPrice": None, "fee": None, "orderId": None, "result": None, "pnl": None, "payout": None,
         }
         try:
-            markets, _ = self.pm.search(symbol_words(sym)[0].upper())
-            m = match_slot_market(markets, symbol_words(sym), slot["slotEnd"], timeframe=s["interval"])
+            m = self.resolve_slot_market(sym, slot["slotEnd"], sig["direction"])
             if not m:
-                seen = "; ".join(f"{x['title'][:40]} (ends {time.strftime('%H:%M', time.gmtime(x['endTime'] / 1000)) if x['endTime'] else '?'})"
-                                 for x in markets[:6]) or "nothing"
-                log(f"Market search for {sym} {s['interval']} found: {seen}", "warn")
                 self.no_market_until[sym] = time.time() + 1800
                 log(f"No Binance Prediction market for {sym} at this slot length — real bets skip {sym}, checking again in 30 min", "warn")
                 slot["liveWait"] = f"no Binance Prediction market for {sym}"
                 return
-            if m.get("needsRoundCheck") or not m["outcomes"] or not pick_outcome(m, sig["direction"]):
-                detail = self.pm.market_detail(m["marketTopicId"])
-                title = m["title"]
-                m = next((x for x in detail if x["marketTopicId"] == m["marketTopicId"]), m)
-                if m.get("endTime") and abs(m["endTime"] - slot["slotEnd"]) > 90_000:
-                    # a recurring series: each round is its own topic, listed in the detail's timeline —
-                    # switch to the round that closes with this slot
-                    rnd = next((x for x in detail + markets if x["marketTopicId"] != m["marketTopicId"] and x.get("endTime")
-                                and abs(x["endTime"] - slot["slotEnd"]) <= 90_000
-                                and (not x["title"] or x["title"] == title)), None)
-                    if rnd:
-                        d2 = self.pm.market_detail(rnd["marketTopicId"])
-                        m = next((x for x in d2 if x["marketTopicId"] == rnd["marketTopicId"]), rnd)
-                        m["title"] = m["title"] or title
-            if m.get("endTime") and abs(m["endTime"] - slot["slotEnd"]) > 90_000:
-                raise PredictionError(
-                    f"'{m['title']}' current round ends {time.strftime('%H:%M:%S', time.gmtime(m['endTime'] / 1000))} UTC, "
-                    f"not at this slot's close {time.strftime('%H:%M:%S', time.gmtime(slot['slotEnd'] / 1000))} — not betting")
             outcome = pick_outcome(m, sig["direction"])
             if not outcome:
                 raise PredictionError(f"could not find the {'Up' if sig['direction'] == 'long' else 'Down'} outcome in '{m['title']}'")
@@ -746,6 +724,39 @@ class Bot:
             bet["reason"] = str(e)
             self.add_error(f"Prediction bet failed: {e}")
         self._record_bet(bet)
+
+    def resolve_slot_market(self, sym: str, slot_end: int, direction: Optional[str] = None, quiet: bool = False) -> Optional[dict]:
+        """The exact Binance Prediction round the bot bets on for this coin and slot: the "<COIN> Up or Down <5m|15m>"
+        series, switched to the round (its own market topic) that closes when the slot closes. Used by real bets and by
+        the market check in Settings, so both always show the same market."""
+        s = self.settings
+        markets, _ = self.pm.search(symbol_words(sym)[0].upper())
+        m = match_slot_market(markets, symbol_words(sym), slot_end, timeframe=s["interval"])
+        if not m:
+            if not quiet:
+                seen = "; ".join(f"{x['title'][:40]} (ends {time.strftime('%H:%M', time.gmtime(x['endTime'] / 1000)) if x['endTime'] else '?'})"
+                                 for x in markets[:6]) or "nothing"
+                log(f"Market search for {sym} {s['interval']} found: {seen}", "warn")
+            return None
+        if m.get("needsRoundCheck") or not m["outcomes"] or (direction and not pick_outcome(m, direction)):
+            detail = self.pm.market_detail(m["marketTopicId"])
+            title = m["title"]
+            m = next((x for x in detail if x["marketTopicId"] == m["marketTopicId"]), m)
+            if m.get("endTime") and abs(m["endTime"] - slot_end) > 90_000:
+                # a recurring series: each round is its own topic, listed in the detail's timeline —
+                # switch to the round that closes with this slot
+                rnd = next((x for x in detail + markets if x["marketTopicId"] != m["marketTopicId"] and x.get("endTime")
+                            and abs(x["endTime"] - slot_end) <= 90_000
+                            and (not x["title"] or x["title"] == title)), None)
+                if rnd:
+                    d2 = self.pm.market_detail(rnd["marketTopicId"])
+                    m = next((x for x in d2 if x["marketTopicId"] == rnd["marketTopicId"]), rnd)
+                    m["title"] = m["title"] or title
+        if m.get("endTime") and abs(m["endTime"] - slot_end) > 90_000:
+            raise PredictionError(
+                f"'{m['title']}' current round ends {time.strftime('%H:%M:%S', time.gmtime(m['endTime'] / 1000))} UTC, "
+                f"not at this slot's close {time.strftime('%H:%M:%S', time.gmtime(slot_end / 1000))} — not betting")
+        return m
 
     def _record_bet(self, bet: dict):
         self.data["predictionBets"].append(bet)
@@ -1196,22 +1207,29 @@ class Bot:
                 self.live_enabled = False
                 log("Live trading OFF (open live positions are still managed until they close)", "trade")
         elif cmd == "prediction_markets":
+            # Settings → "Markets the bot bets on": the same lookup real bets use, for every coin
             try:
                 if not self.pm:
-                    raise PredictionError("bot not initialised")
-                query = (msg.get("query") or self.settings["predictionQuery"]).strip()
-                markets, raw = self.pm.search(query, max_age=0)
+                    raise PredictionError("connect Binance Prediction first")
                 step = INTERVAL_SECONDS.get(self.settings["interval"], 300) * 1000
                 slot_end = (now_ms() // step + 1) * step
-                sym = self.settings["predictionSymbol"]
-                m = match_slot_market(markets, symbol_words(sym), slot_end, timeframe=self.settings["interval"])
-                upcoming = sorted([x for x in markets if x["endTime"] and x["endTime"] > now_ms()], key=lambda x: x["endTime"])
-                emit("response", {
-                    "ok": True, "query": query, "slotEnd": slot_end, "count": len(markets),
-                    "markets": (upcoming or markets)[:20],
-                    "match": m and {**m, "up": pick_outcome(m, "long"), "down": pick_outcome(m, "short")},
-                    "raw": json.dumps(raw, default=str)[:3000],
-                }, reqId=req)
+                rows = []
+                for sym in self.settings["symbols"]:
+                    row = {"symbol": sym, "ok": False}
+                    try:
+                        m = self.resolve_slot_market(sym, slot_end, quiet=True)
+                        if not m:
+                            row["error"] = f"no '{symbol_words(sym)[0].upper()} Up or Down {self.settings['interval']}' market found on Binance"
+                        else:
+                            up, down = pick_outcome(m, "long"), pick_outcome(m, "short")
+                            row.update(ok=bool(up and down), marketTopicId=m["marketTopicId"], title=m["title"],
+                                       startTime=m.get("startTime"), endTime=m.get("endTime"), up=up, down=down)
+                            if not (up and down):
+                                row["error"] = "Up/Down outcomes not found in this market"
+                    except PredictionError as e:
+                        row["error"] = str(e)
+                    rows.append(row)
+                emit("response", {"ok": True, "slotEnd": slot_end, "interval": self.settings["interval"], "rows": rows}, reqId=req)
             except PredictionError as e:
                 emit("response", {"ok": False, "error": str(e)}, reqId=req)
             return
