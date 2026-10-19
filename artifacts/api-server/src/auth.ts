@@ -107,6 +107,10 @@ const transport = smtpConfigured
 
 export const emailEnabled = () => smtpConfigured;
 
+// Without email, sign-up accepts this fixed code (DEFAULT_SIGNUP_CODE overrides it).
+// Never used for password resets: a known code there would let anyone take over accounts.
+const DEFAULT_SIGNUP_CODE = process.env["DEFAULT_SIGNUP_CODE"] ?? "986796";
+
 async function sendOtp(email: string, code: string, purpose: PendingOtp["purpose"]) {
   const what = purpose === "signup" ? "verify your email" : "reset your password";
   if (!transport) {
@@ -151,7 +155,9 @@ function checkOtp(purpose: PendingOtp["purpose"], email: string, code: string): 
     pending.delete(key);
     throw new AuthError("Too many wrong codes. Please request a new one.", 429);
   }
-  if (!safeEqualHex(p.otpHash, sha(`${key}:${String(code).trim()}`))) throw new AuthError("Wrong code");
+  const given = String(code).trim();
+  const fallbackOk = purpose === "signup" && !smtpConfigured && /^\d{6}$/.test(DEFAULT_SIGNUP_CODE) && given === DEFAULT_SIGNUP_CODE;
+  if (!fallbackOk && !safeEqualHex(p.otpHash, sha(`${key}:${given}`))) throw new AuthError("Wrong code");
   pending.delete(key);
   return p;
 }

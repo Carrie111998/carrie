@@ -33,6 +33,7 @@ The app runs on port **8888** (`docker-compose.yml` also has Traefik labels for 
 | --- | --- |
 | `PORT` | HTTP port (required) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email server used to send sign-up and password-reset codes (OTP). For Gmail use `smtp.gmail.com`, port 587 and an [app password](https://myaccount.google.com/apppasswords). **If not set, codes are written to the server log instead.** |
+| `DEFAULT_SIGNUP_CODE` | Code that sign-up accepts **only while SMTP is not configured** (default `986796`). Password resets never accept it. |
 | `MAX_USERS` | Maximum number of accounts that can sign up (default 50) |
 | `BOT_DATA_DIR` | Where trades, learning data, settings and API keys are saved (default `./data`, git-ignored) |
 | `BOT_SIMULATE=1` | Offline simulated prices and orders, for testing without Binance |

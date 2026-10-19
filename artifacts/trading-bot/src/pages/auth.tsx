@@ -155,8 +155,10 @@ export default function AuthScreen() {
   const sendResetCode = () => api("/auth/reset", { method: "POST", body: { email } });
   const codeHint = emailEnabled ? (
     <>We sent a 6-digit code to <b className="text-foreground">{email}</b>. It expires in 10 minutes. Check your spam folder too.</>
+  ) : screen === "signup-otp" ? (
+    <>Email sending isn't set up on this server yet. Enter the default verification code from the admin.</>
   ) : (
-    <>Email sending isn't set up on this server yet, so the 6-digit code was written to the server log. Ask the admin for it.</>
+    <>Email sending isn't set up on this server yet, so the reset code was written to the server log. Ask the admin for it.</>
   );
 
   if (screen === "signup-otp" || screen === "forgot-otp") {
