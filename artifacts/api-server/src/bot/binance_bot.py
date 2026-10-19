@@ -240,7 +240,7 @@ class Bot:
         if self.enabled(AI_KEY):
             model_src = self.data["learning"]
             col = self.collective if self.settings.get("useCommunityLearning", True) else None
-            if col and col.get("model", {}).get("samples", 0) > model_src["model"]["samples"]:
+            if col and col.get("model", {}).get("samples", 0) > 0:  # one shared model for every bot
                 model_src = {"model": col["model"]}  # community model has seen more outcomes
             ai = learner.ai_vote(model_src, votes)
             if ai is not None:
@@ -330,20 +330,19 @@ class Bot:
     # ─── Paper "Binance Prediction" bets (dummy Up/Down bet on every slot) ──
 
     def prediction_blockers(self, sig: dict) -> List[str]:
+        """Practice (dummy) bets go on every slot, Up or Down, whatever the confidence: that gives
+        auto-tune a fair record of which confidence levels actually win. Real bets keep the
+        minimum confidence (see place_prediction_bet)."""
         s = self.settings
         r = []
         if sig["direction"] == "neutral":
             r.append("no clear direction")
-        if sig["confidence"] < s["minConfidence"]:
-            r.append(f"confidence {sig['confidence']:.0f}% < {s['minConfidence']}%")
         if sig["symbol"] in s["blockedSymbols"]:
             r.append("symbol blocked by auto-tune")
         if time.gmtime().tm_hour in s["blockedHours"]:
             r.append("hour blocked by auto-tune")
-        if sig["adx"] < s["minAdx"]:
-            r.append(f"ADX {sig['adx']:.0f} < {s['minAdx']}")
         if sig["direction"] == "short" and not s["allowShort"]:
-            r.append("Down bets disabled by auto-tune")
+            r.append("Down bets disabled")
         return r
 
     def open_paper_predictions(self, new_slots: List[tuple]):

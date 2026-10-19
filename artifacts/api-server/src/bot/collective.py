@@ -65,6 +65,20 @@ def main(data_dir: str):
         if t["actual"] and t.get("votes"):
             learner.record_outcome(learning, t["votes"], t["actual"])
 
+    # One brain: every bot uses the same AI model — the most-trained one any bot has built
+    # (each bot trains on every prediction it scores, far more samples than settled trades).
+    best = None
+    for path in glob.glob(os.path.join(data_dir, "users", "*", "bot_data.json")):
+        try:
+            with open(path) as f:
+                m = json.load(f).get("learning", {}).get("model")
+        except Exception:
+            continue
+        if m and m.get("samples", 0) > (best or {}).get("samples", 0):
+            best = m
+    if best and best.get("samples", 0) > learning["model"].get("samples", 0):
+        learning["model"] = best
+
     # what auto-tune would choose for a fresh account, learning from everybody's prediction bets
     # the shared brain (admin's strategy settings) is what gets tuned, when it exists
     brain_file = os.path.join(data_dir, "global", "brain.json")

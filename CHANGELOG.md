@@ -2,6 +2,11 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.0.4 — 2026-10-19
+
+- **Practice bets on every slot, Up or Down**: dummy Prediction bets no longer need the minimum confidence (that limit only ever let the old Up-biased predictions through, so every past bet was Up). Auto-tune now gets a fair record of which confidence levels win. Real-money bets still need the minimum confidence.
+- **One AI model for every bot**: all bots use the most-trained model (shared via community learning), so every user gets the same prediction for the same coin and slot.
+
 ## v3.0.3 — 2026-10-19
 
 - The slow EMA-100 trend no longer votes directly on each slot's Up/Down decision or confidence. In a long uptrend it sat at about +0.97 on every coin, so Down predictions were rarely confident enough to bet. It still feeds the AI model.
