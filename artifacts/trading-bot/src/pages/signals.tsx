@@ -19,7 +19,7 @@ function SignalCard({ s, labels, weights, minConfidence }: { s: Signal; labels: 
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-mono font-semibold">{s.symbol}</span>
             <SideBadge side={s.direction} />
-            {s.blocked && <span className="text-[10px] uppercase text-red-300">blocked</span>}
+            {s.blocked && <span className="text-[10px] uppercase text-red-700">blocked</span>}
           </div>
           <div className="flex items-center gap-2">
             <span className="font-mono text-sm">{fmtPrice(s.price)}</span>
@@ -40,8 +40,8 @@ function SignalCard({ s, labels, weights, minConfidence }: { s: Signal; labels: 
           <span>RSI {s.rsi.toFixed(0)}</span>
           <span>ADX {s.adx.toFixed(0)}</span>
           <span className="capitalize">{s.regime}</span>
-          <span className="text-emerald-400">{bulls} bullish</span>
-          <span className="text-red-400">{bears} bearish</span>
+          <span className="text-emerald-700">{bulls} bullish</span>
+          <span className="text-red-700">{bears} bearish</span>
           <span>{fmtTime(s.time)}</span>
         </div>
         <div className={cn("mt-2 text-xs", tradable ? "text-primary" : "text-muted-foreground")}>
@@ -56,7 +56,7 @@ function SignalCard({ s, labels, weights, minConfidence }: { s: Signal; labels: 
                 {labels[k] ?? k} <span className="text-muted-foreground">×{(weights[k] ?? 1).toFixed(2)}</span>
               </span>
               <VoteBar value={v} />
-              <span className={cn("text-right font-mono", v > 0 ? "text-emerald-400" : v < 0 ? "text-red-400" : "text-muted-foreground")}>
+              <span className={cn("text-right font-mono", v > 0 ? "text-emerald-700" : v < 0 ? "text-red-700" : "text-muted-foreground")}>
                 {v > 0 ? "+" : ""}{v.toFixed(2)}
               </span>
             </div>

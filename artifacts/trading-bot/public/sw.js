@@ -1,6 +1,6 @@
 // Minimal service worker: makes the app installable and keeps the app shell
 // available offline. API calls and the WebSocket always go to the network.
-const CACHE = "predict-bot-shell-v1";
+const CACHE = "predict-bot-shell-v3";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/manifest.webmanifest", "/icon-192.png"])));

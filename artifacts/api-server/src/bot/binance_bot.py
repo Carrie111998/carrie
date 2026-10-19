@@ -59,7 +59,7 @@ def log(msg: str, level: str = "info"):
 # ─── Default settings (the Node server sends the real ones) ──────────────────
 
 DEFAULT_SETTINGS = {
-    "symbols": ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT"],
+    "symbols": ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
     "interval": "5m",
     "scanIntervalSec": 30,
     "predictionHorizon": 3,
@@ -558,7 +558,7 @@ class Bot:
             }
             slots.append(slot)
             self._new_slots.append((sym, slot, sig))
-            if self.live_enabled and self.settings.get("liveVenue") == "prediction" and sym == self.settings["predictionSymbol"]:
+            if self.live_enabled and self.settings.get("liveVenue") == "prediction" and sym in self.settings["symbols"]:
                 self.place_prediction_bet(sym, slot, sig)
         # forget unscorable slots (missed candles) and keep history small
         self.data["slots"][sym] = [sl for sl in slots if sl["close"] is not None or sl["slotStart"] >= times[0]][-200:]
@@ -584,6 +584,8 @@ class Bot:
             reasons.append(f"confidence {sig['confidence']:.0f}% < {s['minConfidence']}%")
         if time.gmtime().tm_hour in s["blockedHours"]:
             reasons.append("hour blocked by auto-tune")
+        if sig["direction"] == "short" and not s["allowShort"]:
+            reasons.append("Down bets disabled by auto-tune")
         if not bet["dryRun"] and self.prediction_exposure() + bet["amount"] > s["predictionMaxExposureUsdt"]:
             reasons.append("max exposure reached")
         if self.live_loss_today() >= s["liveDailyLossLimitUsdt"]:
@@ -593,7 +595,7 @@ class Bot:
             bet["reason"] = ", ".join(reasons)
             return self._record_bet(bet)
         try:
-            markets, _ = self.pm.search(s["predictionQuery"])
+            markets, _ = self.pm.search(symbol_words(sym)[0].upper())
             m = match_slot_market(markets, symbol_words(sym), slot["slotEnd"])
             if not m:
                 raise PredictionError(f"no open {sym} market ends at this slot's close — check Settings → Find markets")

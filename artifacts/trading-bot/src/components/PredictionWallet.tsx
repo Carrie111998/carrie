@@ -51,15 +51,15 @@ export function PredictionWallet() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-secondary/60 px-3 py-2 text-sm">
         <span className="flex items-center gap-2">
-          <Wallet className="h-4 w-4 text-amber-400" />
+          <Wallet className="h-4 w-4 text-amber-700" />
           Agentic Wallet:{" "}
-          <b className={connected ? "text-emerald-400" : "text-muted-foreground"}>
+          <b className={connected ? "text-emerald-700" : "text-muted-foreground"}>
             {info == null ? "checking…" : connected ? "connected" : info.status.startsWith("ERROR") ? info.status : "not connected"}
           </b>
         </span>
         {connected && (
           <span className="font-mono text-xs">
-            Prediction balance: <b className="text-amber-300">{acct?.venue === "prediction" && acct.ok ? `${fmtUsd(acct.usdt)} USDT` : "—"}</b>
+            Prediction balance: <b className="text-amber-700">{acct?.venue === "prediction" && acct.ok ? `${fmtUsd(acct.usdt)} USDT` : "—"}</b>
           </span>
         )}
       </div>
@@ -95,7 +95,7 @@ export function PredictionWallet() {
         </div>
       )}
       {info?.signin?.state === "failed" && !connected && (
-        <div className="text-xs text-red-300">Sign-in failed: {info.signin.error}. Try again.</div>
+        <div className="text-xs text-red-700">Sign-in failed: {info.signin.error}. Try again.</div>
       )}
 
       <div className="flex flex-wrap gap-2">
@@ -128,7 +128,7 @@ export function PredictionWallet() {
             </Button>
             <Button
               variant="ghost"
-              className="text-red-400"
+              className="text-red-700"
               onClick={() => run("Sign-out failed", async () => {
                 await api("/prediction/signout", { method: "POST" });
                 await load();
@@ -171,10 +171,10 @@ export function MarketFinder({ query }: { query: string }) {
           <Search className="h-4 w-4 mr-1.5" /> {busy ? "Searching…" : "Find markets"}
         </Button>
       </div>
-      {res && !res.ok && <div className="text-xs text-red-300">{res.error}</div>}
+      {res && !res.ok && <div className="text-xs text-red-700">{res.error}</div>}
       {res?.ok && (
         <div className="space-y-2 text-xs">
-          <div className={cn("rounded-md px-3 py-2", res.match ? "bg-emerald-500/10 text-emerald-200" : "bg-red-500/10 text-red-200")}>
+          <div className={cn("rounded-md px-3 py-2", res.match ? "bg-emerald-500/10 text-emerald-700" : "bg-red-500/10 text-red-700")}>
             {res.match ? (
               <>
                 ✓ Current slot (ends {hhmm(res.slotEnd!)}) → <b>{res.match.title}</b>. UP bets buy “{res.match.up?.label ?? "not found"}”, DOWN bets buy “

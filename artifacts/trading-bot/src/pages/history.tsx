@@ -100,7 +100,7 @@ export default function History() {
                 </div>
                 <div className="text-right flex-shrink-0 text-xs">
                   {b.result ? (
-                    <span className={b.result === "win" ? "text-emerald-400" : "text-red-400"}>
+                    <span className={b.result === "win" ? "text-emerald-700" : "text-red-700"}>
                       {b.result}
                       {b.pnl != null && b.status === "placed" ? ` ${fmtSigned(b.pnl)}` : ""}
                     </span>
@@ -124,7 +124,7 @@ export default function History() {
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="font-mono text-sm font-semibold">{t.symbol}</span>
                   {t.kind === "prediction" || t.exitReason === "slot_settled" ? (
-                    <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${t.side === "long" ? "border-emerald-500/30 text-emerald-300" : "border-red-500/30 text-red-300"}`}>
+                    <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${t.side === "long" ? "border-emerald-500/30 text-emerald-700" : "border-red-500/30 text-red-700"}`}>
                       {t.side === "long" ? "UP" : "DOWN"}
                     </span>
                   ) : (

@@ -108,7 +108,9 @@ def ai_vote(learning: dict, votes: Dict[str, float]) -> Optional[float]:
     m = learning["model"]
     if m["samples"] < AI_MIN_SAMPLES:
         return None
-    z = m["b"] + sum(m["w"].get(k, 0.0) * v for k, v in votes.items() if k != AI_KEY)
+    # no bias term: it only remembers whether the market mostly rose or fell while the model
+    # trained, which made every prediction lean the same way (e.g. Up only)
+    z = sum(m["w"].get(k, 0.0) * v for k, v in votes.items() if k != AI_KEY)
     return round(2 * _sigmoid(z) - 1, 4)
 
 

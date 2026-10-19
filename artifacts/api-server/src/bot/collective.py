@@ -66,7 +66,15 @@ def main(data_dir: str):
             learner.record_outcome(learning, t["votes"], t["actual"])
 
     # what auto-tune would choose for a fresh account, learning from everybody's prediction bets
-    base = merge_settings(DEFAULT_SETTINGS, {})
+    # the shared brain (admin's strategy settings) is what gets tuned, when it exists
+    brain_file = os.path.join(data_dir, "global", "brain.json")
+    brain = {}
+    try:
+        with open(brain_file) as f:
+            brain = json.load(f).get("settings", {})
+    except Exception:
+        pass
+    base = merge_settings(DEFAULT_SETTINGS, brain)
     tune_view = [dict(t, mode="paper") for t in trades]  # live results count as evidence too
     recommended, changes = ({}, [])
     if len(tune_view) >= 15:

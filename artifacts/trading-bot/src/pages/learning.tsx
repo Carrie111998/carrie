@@ -1,9 +1,17 @@
+import { useCallback, useEffect, useState } from "react";
 import { Brain, FlaskConical, Lightbulb, Users, Wand2 } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
 import { api, type GroupRow } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Empty, Meter, Panel, Stat, fmtDateTime, fmtPct, fmtSigned, pnlClass } from "@/components/bits";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+
+type BrainInfo = {
+  updatedAt: number;
+  updatedBy: string;
+  log: { time: number; source: "admin" | "auto-tune"; by?: string; changes: { param: string; from: unknown; to: unknown; reason?: string }[] }[];
+};
 
 function GroupTable({ rows, keyLabel, fmtKey }: { rows: GroupRow[]; keyLabel: string; fmtKey?: (k: string) => string }) {
   if (!rows.length) return <Empty>No data yet.</Empty>;
@@ -23,7 +31,7 @@ function GroupTable({ rows, keyLabel, fmtKey }: { rows: GroupRow[]; keyLabel: st
             <tr key={r.key} className="border-t border-border">
               <td className="py-1.5 font-mono capitalize">{fmtKey ? fmtKey(r.key) : r.key}</td>
               <td className="py-1.5 text-right font-mono">{r.trades}</td>
-              <td className={cn("py-1.5 text-right font-mono", r.winRate >= 50 ? "text-emerald-400" : r.winRate < 40 ? "text-red-400" : "")}>
+              <td className={cn("py-1.5 text-right font-mono", r.winRate >= 50 ? "text-emerald-700" : r.winRate < 40 ? "text-red-700" : "")}>
                 {fmtPct(r.winRate)}
               </td>
               <td className={cn("py-1.5 text-right font-mono", pnlClass(r.pnl))}>{fmtSigned(r.pnl)}</td>
@@ -43,6 +51,14 @@ function fmtValue(v: unknown) {
 
 export default function Learning() {
   const { state, run } = useBot();
+  const { toast } = useToast();
+  const [brain, setBrain] = useState<BrainInfo | null>(null);
+  const loadBrain = useCallback(() => api<BrainInfo>("/brain").then(setBrain).catch(() => {}), []);
+  useEffect(() => {
+    loadBrain();
+    const t = setInterval(loadBrain, 30_000);
+    return () => clearInterval(t);
+  }, [loadBrain]);
   const L = state?.learning;
   const study = L?.lossStudy;
   const calibrating = state?.status?.calibrating;
@@ -65,7 +81,15 @@ export default function Learning() {
             <FlaskConical className="h-4 w-4 mr-1.5" />
             {calibrating ? `Calibrating ${calibrating.progress}%` : "Calibrate on history"}
           </Button>
-          <Button onClick={() => run("Auto-tune failed", () => api("/learning/autotune", { method: "POST" }))}>
+          <Button
+            onClick={() =>
+              run("Auto-tune failed", async () => {
+                const r = await api<{ message: string }>("/learning/autotune", { method: "POST" });
+                toast({ title: "Shared brain auto-tune", description: r.message });
+                loadBrain();
+              })
+            }
+          >
             <Wand2 className="h-4 w-4 mr-1.5" /> Auto-tune now
           </Button>
         </div>
@@ -117,7 +141,7 @@ export default function Learning() {
         )}
       </Panel>
 
-      <Panel title={<span className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-amber-400" /> Loss study</span>}>
+      <Panel title={<span className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-amber-700" /> Loss study</span>}>
         {study ? (
           <div className="space-y-4">
             <div className="text-xs text-muted-foreground">
@@ -126,7 +150,7 @@ export default function Learning() {
             <ul className="space-y-1.5 text-sm">
               {study.insights.map((i) => (
                 <li key={i} className="flex gap-2">
-                  <span className="text-amber-400">•</span>
+                  <span className="text-amber-700">•</span>
                   <span>{i}</span>
                 </li>
               ))}
@@ -208,7 +232,7 @@ export default function Learning() {
                 <span className="truncate">{m.label}</span>
                 <span className="font-mono text-muted-foreground flex-shrink-0">
                   losers {fmtPct(m.lossBacking)} · winners {fmtPct(m.winBacking)} ·{" "}
-                  <span className={m.lift > 0 ? "text-red-400" : "text-emerald-400"}>{fmtSigned(m.lift)}</span>
+                  <span className={m.lift > 0 ? "text-red-700" : "text-emerald-700"}>{fmtSigned(m.lift)}</span>
                 </span>
               </div>
             ))}
@@ -218,17 +242,19 @@ export default function Learning() {
         )}
       </Panel>
 
-      <Panel title="Auto-tune history">
-        {L?.tuningLog.length ? (
+      <Panel title="Shared brain — change history">
+        {brain?.log.length ? (
           <div className="space-y-3">
-            {L.tuningLog.map((entry) => (
+            {brain.log.map((entry) => (
               <div key={entry.time} className="border-l-2 border-primary/50 pl-3">
-                <div className="text-xs text-muted-foreground">{fmtDateTime(entry.time)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {fmtDateTime(entry.time)} · {entry.source === "admin" ? `edited by ${entry.by ?? "admin"}` : "auto-tune from all users' trades"}
+                </div>
                 <ul className="mt-1 space-y-0.5 text-xs">
                   {entry.changes.map((c, i) => (
                     <li key={i}>
                       <span className="font-mono">{c.param}</span>: {fmtValue(c.from)} → <b>{fmtValue(c.to)}</b>{" "}
-                      <span className="text-muted-foreground">— {c.reason}</span>
+                      {c.reason && <span className="text-muted-foreground">— {c.reason}</span>}
                     </li>
                   ))}
                 </ul>
@@ -236,7 +262,7 @@ export default function Learning() {
             ))}
           </div>
         ) : (
-          <Empty>No automatic changes yet. Auto-tune runs every few closed paper trades.</Empty>
+          <Empty>No changes yet. Auto-tune checks all users' new settled trades every 10 minutes.</Empty>
         )}
       </Panel>
     </div>

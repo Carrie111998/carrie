@@ -26,7 +26,7 @@ export function setupWebSocket(server: Server) {
     };
     const unsubscribe = engine.subscribe(send);
     send("state", engine.publicState());
-    send("settings", engine.settings);
+    send("settings", engine.effectiveSettings());
 
     // live price ticks for the one symbol this browser is charting
     let unwatch: (() => void) | null = null;

@@ -18,15 +18,15 @@ function StatusPill() {
   const st = state?.status;
   const label = !state?.engineOnline ? "offline" : st?.running ? (st.liveEnabled ? "live" : st.phase) : "stopped";
   const color = !state?.engineOnline
-    ? "bg-red-500/20 text-red-300"
+    ? "bg-red-500/20 text-red-700"
     : st?.liveEnabled
-      ? "bg-amber-500/20 text-amber-300"
+      ? "bg-amber-500/20 text-amber-700"
       : st?.running
-        ? "bg-emerald-500/20 text-emerald-300"
-        : "bg-slate-500/20 text-slate-300";
+        ? "bg-emerald-500/20 text-emerald-700"
+        : "bg-slate-500/20 text-slate-700";
   return (
     <div className="flex items-center gap-2">
-      {wsConnected ? <Wifi className="h-3.5 w-3.5 text-emerald-400" /> : <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />}
+      {wsConnected ? <Wifi className="h-3.5 w-3.5 text-emerald-700" /> : <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />}
       <span className={cn("rounded px-2 py-0.5 text-[11px] font-semibold uppercase", color)}>{label}</span>
     </div>
   );
@@ -35,7 +35,10 @@ function StatusPill() {
 export default function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { user, signOut } = useAuth();
-  const items = user?.isAdmin ? [...navItems, { href: "/admin", label: "Admin", icon: ShieldCheck }] : navItems;
+  // Learning (the shared brain) is admin-only; everyone else just uses the bot.
+  const items = user?.isAdmin
+    ? [...navItems, { href: "/admin", label: "Admin", icon: ShieldCheck }]
+    : navItems.filter((i) => i.href !== "/learning");
 
   const isActive = (href: string) => (href === "/" ? location === "/" : location.startsWith(href));
 
@@ -47,7 +50,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <Activity className="h-5 w-5 text-primary" />
           <div>
             <div className="text-sm font-bold leading-tight">Binance Predict Bot</div>
-            <div className="text-xs text-muted-foreground">Self-learning crypto bot</div>
+            <div className="text-xs text-muted-foreground">One shared self-learning brain</div>
           </div>
         </div>
         <div className="px-4 py-3 border-b border-border">
@@ -60,7 +63,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               href={href}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-                isActive(href) ? "bg-secondary text-foreground font-medium" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
+                isActive(href) ? "bg-primary/10 text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
               )}
             >
               <Icon className="h-4 w-4" />
@@ -103,7 +106,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>
 
         {/* Mobile bottom navigation */}
-        <nav className={`md:hidden fixed bottom-0 inset-x-0 z-30 grid ${items.length > 5 ? "grid-cols-6" : "grid-cols-5"} border-t border-border bg-background/95 backdrop-blur pb-[env(safe-area-inset-bottom)]`}>
+        <nav className={`md:hidden fixed bottom-0 inset-x-0 z-30 grid ${items.length > 5 ? "grid-cols-6" : items.length === 4 ? "grid-cols-4" : "grid-cols-5"} border-t border-border bg-background/95 backdrop-blur pb-[env(safe-area-inset-bottom)]`}>
           {items.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}

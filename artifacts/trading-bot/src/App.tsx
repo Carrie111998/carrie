@@ -8,11 +8,16 @@ import Admin from "@/pages/admin";
 import Layout from "@/pages/layout";
 import Dashboard from "@/pages/dashboard";
 import Signals from "@/pages/signals";
-import Learning from "@/pages/learning";
+import LearningPage from "@/pages/learning";
 import History from "@/pages/history";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 import DeviceGate from "@/components/device-gate";
+
+function Learning() {
+  const { user } = useAuth();
+  return user?.isAdmin ? <LearningPage /> : <NotFound />;
+}
 
 function Router() {
   return (

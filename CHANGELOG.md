@@ -2,6 +2,16 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.0.0 — 2026-10-19 (branch `release/v3.0.0`)
+
+- **One brain, one bot for everyone**: all strategy settings (confidence, filters, indicators and weights, Down bets, auto-tune) live in one shared brain (`data/global/brain.json`). Only the admin can see and change them (Settings → Shared brain, and the Learning page). The first brain is copied from the admin's settings.
+- **Learns from all users**: every user's practice and real trades are pooled every 10 minutes and auto-tune updates the shared brain after enough new trades (admin can also press *Auto-tune now*). Every change (admin or auto-tune) is logged on the Learning page.
+- **Simple settings for users**: coins (BTC, ETH, BNB), prediction slot (5 min, 15 min, 1 hour), run time, bet amounts, daily loss limit, max open bets, practice/real mode and Binance connection. Learning page and strategy settings are hidden for normal users.
+- **Run time**: when you press Start the bot runs for 15 min, 30 min, 1 h, 3 h, 6 h, 12 h or with no limit (default), then stops itself (real betting too). A countdown shows on the Dashboard. Survives server restarts.
+- **Real Prediction bets on every chosen coin** (each coin's own market), and Down bets respect the shared *Allow Down bets* setting.
+- **Fixed "Up only" bias**: the AI model no longer uses its bias term, which only remembered whether the market had mostly risen while it trained and pushed every prediction the same way.
+- **New light theme** with rounded cards, larger tap targets and plainer wording.
+
 ## v2.2.0 — 2026-10-19 (branch `release/v2.2.0`)
 
 - **Phone-only app**: works only on Android phones (Chrome) and iPhones (Safari). Desktops, laptops and tablets see "This app is available only on Android and iOS smartphones. Please open this link on your mobile phone." Detection uses the User-Agent, client hints, platform, touch support and (only as a tie-breaker) screen size.

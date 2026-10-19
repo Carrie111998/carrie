@@ -11,7 +11,7 @@ export interface IndicatorConfig {
 
 export interface BotSettings {
   symbols: string[];
-  interval: "1m" | "3m" | "5m" | "15m" | "30m" | "1h" | "4h";
+  interval: "5m" | "15m" | "1h";
   scanIntervalSec: number;
   predictionHorizon: number;
   minConfidence: number;
@@ -49,6 +49,7 @@ export interface BotSettings {
   predictionDryRun: boolean;
   predictionAutoRedeem: boolean;
   useCommunityLearning: boolean;
+  runDurationMin: number;
   settingsVersion: number;
 }
 
@@ -199,6 +200,8 @@ export interface LiveAccount {
 
 export interface BotState {
   engineOnline: boolean;
+  /** when the current run stops by itself (ms), null = until stopped */
+  stopAt?: number | null;
   logs: { time: number; level: string; message: string }[];
   status?: {
     running: boolean;

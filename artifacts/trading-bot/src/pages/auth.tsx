@@ -89,7 +89,7 @@ function OtpInput({ value, onChange }: { value: string; onChange: (v: string) =>
 }
 
 function ErrorText({ error }: { error: string }) {
-  return error ? <p className="text-xs text-red-400" role="alert">{error}</p> : null;
+  return error ? <p className="text-xs text-red-700" role="alert">{error}</p> : null;
 }
 
 function ResendButton({ onResend }: { onResend: () => Promise<void> }) {

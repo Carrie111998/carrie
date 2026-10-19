@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AlertTriangle, Play, Square, X, Zap } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
+import { useAuth } from "@/hooks/useAuth";
 import { api, type Position } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,7 @@ function LiveConfirm({ open, onOpenChange, testnet, amount }: { open: boolean; o
       <AlertDialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-400" />
+            <AlertTriangle className="h-5 w-5 text-amber-700" />
             {prediction
               ? `Start ${dryRun ? "DRY-RUN" : "REAL-MONEY"} prediction betting?`
               : `Start ${testnet ? "TESTNET" : "REAL-MONEY"} auto trading?`}
@@ -44,7 +45,7 @@ function LiveConfirm({ open, onOpenChange, testnet, amount }: { open: boolean; o
                 </p>
               )}
               {((prediction && !dryRun) || (!prediction && !testnet)) && (
-                <p className="text-amber-300">This uses real funds. Prediction bets can go to zero and past accuracy does not guarantee profit — only use money you can afford to lose.</p>
+                <p className="text-amber-700">This uses real funds. Prediction bets can go to zero and past accuracy does not guarantee profit — only use money you can afford to lose.</p>
               )}
               <p>Type <b>START</b> to confirm.</p>
             </div>
@@ -74,7 +75,7 @@ function PositionRow({ p }: { p: Position }) {
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-sm font-semibold">{p.symbol}</span>
           {p.kind === "prediction" ? (
-            <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${p.side === "long" ? "border-emerald-500/30 text-emerald-300" : "border-red-500/30 text-red-300"}`}>
+            <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${p.side === "long" ? "border-emerald-500/30 text-emerald-700" : "border-red-500/30 text-red-700"}`}>
               {p.side === "long" ? "UP" : "DOWN"}
             </span>
           ) : (
@@ -107,8 +108,27 @@ function PositionRow({ p }: { p: Position }) {
   );
 }
 
+const runLabel = (m: number) => (m === 0 ? "no time limit" : m < 60 ? `${m} min` : `${m / 60} hr${m > 60 ? "s" : ""}`);
+
+function RunTimer({ stopAt }: { stopAt: number | null }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  if (stopAt == null) return <span className="text-xs text-muted-foreground">Runs until you stop it</span>;
+  const left = Math.max(0, stopAt - now);
+  const h = Math.floor(left / 3_600_000), m = Math.floor((left % 3_600_000) / 60_000), sec = Math.floor((left % 60_000) / 1000);
+  return (
+    <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary tabular-nums">
+      Stops in {h > 0 ? `${h}h ` : ""}{m}m {String(sec).padStart(2, "0")}s
+    </span>
+  );
+}
+
 export default function Dashboard() {
   const { state, settings, run } = useBot();
+  const { user } = useAuth();
   const [confirmLive, setConfirmLive] = useState(false);
   const st = state?.status;
   const paper = state?.paper;
@@ -129,21 +149,24 @@ export default function Dashboard() {
           <h1 className="text-xl font-bold">Dashboard</h1>
           <p className="text-xs text-muted-foreground">
             {st?.lastCycle ? `Last scan ${fmtTime(st.lastCycle)} · ${st.cycleMs ?? 0} ms` : "Not scanned yet"}
-            {settings && ` · ${settings.symbols.length} pairs · ${settings.interval}`}
+            {settings && ` · ${settings.symbols.map((x) => x.replace("USDT", "")).join(", ")} · ${settings.interval} slots`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {running ? (
-            <Button variant="destructive" onClick={() => run("Could not stop", () => api("/bot/stop", { method: "POST" }))}>
-              <Square className="h-4 w-4 mr-1.5" /> Stop bot
-            </Button>
+            <>
+              <Button size="lg" variant="destructive" className="rounded-full" onClick={() => run("Could not stop", () => api("/bot/stop", { method: "POST" }))}>
+                <Square className="h-4 w-4 mr-1.5" /> Stop bot
+              </Button>
+              <RunTimer stopAt={state?.stopAt ?? null} />
+            </>
           ) : (
-            <Button onClick={() => run("Could not start", () => api("/bot/start", { method: "POST" }))} disabled={!state?.engineOnline}>
-              <Play className="h-4 w-4 mr-1.5" /> Start paper trading
+            <Button size="lg" className="rounded-full" onClick={() => run("Could not start", () => api("/bot/start", { method: "POST" }))} disabled={!state?.engineOnline}>
+              <Play className="h-4 w-4 mr-1.5" /> Start bot · {runLabel(settings?.runDurationMin ?? 0)}
             </Button>
           )}
           <label className="flex items-center gap-2 rounded-md border border-amber-500/40 px-3 py-2">
-            <Zap className="h-4 w-4 text-amber-400" />
+            <Zap className="h-4 w-4 text-amber-700" />
             <span className="text-sm">Live trading</span>
             <Switch
               checked={st?.liveEnabled ?? false}
@@ -163,27 +186,27 @@ export default function Dashboard() {
         </div>
       )}
       {st?.simulated && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-700">
           Simulation mode (BOT_SIMULATE=1): prices are generated offline, not from Binance.
         </div>
       )}
       {!state?.engineOnline && state && (
-        <div className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs text-red-200">Bot engine is offline — restarting…</div>
+        <div className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs text-red-700">Bot engine is offline — restarting…</div>
       )}
       {st?.calibrating && (
-        <div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-xs text-sky-200">
+        <div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-xs text-sky-700">
           Calibrating on historical data: {st.calibrating.symbol} ({st.calibrating.progress}%)
         </div>
       )}
       {st?.errors?.[0] && Date.now() - st.errors[0].time < 10 * 60_000 && (
-        <div className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs text-red-200 break-words">
+        <div className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs text-red-700 break-words">
           {fmtTime(st.errors[0].time)} — {st.errors[0].message}
         </div>
       )}
 
       {/* Accuracy + key stats */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <Panel title="Bot accuracy" action={<Link href="/learning" className="text-xs text-primary">Details</Link>}>
+        <Panel title="Bot accuracy" action={user?.isAdmin ? <Link href="/learning" className="text-xs text-primary">Details</Link> : undefined}>
           <div className="flex flex-col items-center gap-3">
             <Gauge value={state?.accuracyScore} label="Overall accuracy score" />
             <div className="w-full space-y-2 text-xs">
@@ -218,7 +241,7 @@ export default function Dashboard() {
             <Stat
               label="Win rate"
               value={fmtPct(paper?.winRate)}
-              valueClass={aboveBreakEven == null ? undefined : aboveBreakEven ? "text-emerald-400" : "text-red-400"}
+              valueClass={aboveBreakEven == null ? undefined : aboveBreakEven ? "text-emerald-700" : "text-red-700"}
               sub={`${breakEven != null ? `need >${breakEven.toFixed(1)}% · ` : ""}${paper?.wins ?? 0}W / ${paper?.losses ?? 0}L`}
             />
             <Stat label="Profit factor" value={paper?.profitFactor ?? "—"} sub={`avg ${fmtSigned(paper?.avgWin)} / ${fmtSigned(paper?.avgLoss)}`} />
@@ -227,8 +250,8 @@ export default function Dashboard() {
           {predictionMode && settings && (
             <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
               Fixed bet <b className="text-foreground">{fmtUsd(settings.paperTradeAmountUsdt)}</b> every round — never increased after a loss. A win pays{" "}
-              <b className="text-emerald-400">+{fmtUsd(settings.paperTradeAmountUsdt * (1 / settings.paperPredictionPrice - 1))}</b>, a loss costs{" "}
-              <b className="text-red-400">−{fmtUsd(settings.paperTradeAmountUsdt)}</b>. Profitable only while the win rate stays above{" "}
+              <b className="text-emerald-700">+{fmtUsd(settings.paperTradeAmountUsdt * (1 / settings.paperPredictionPrice - 1))}</b>, a loss costs{" "}
+              <b className="text-red-700">−{fmtUsd(settings.paperTradeAmountUsdt)}</b>. Profitable only while the win rate stays above{" "}
               <b className="text-foreground">{breakEven?.toFixed(1)}%</b>.
             </div>
           )}
@@ -238,7 +261,7 @@ export default function Dashboard() {
                 label={st.venue === "prediction" ? "Prediction balance" : st.liveAccount?.testnet ? "Testnet USDT" : "Binance USDT"}
                 value={st.liveAccount?.ok ? fmtUsd(st.liveAccount.usdt) : "—"}
                 sub={st.liveAccount?.ok === false ? "check failed" : st.liveEnabled ? "live ON" : "live off"}
-                valueClass="text-amber-300"
+                valueClass="text-amber-700"
               />
               <Stat label="Live P&L" value={fmtSigned(live?.pnl)} valueClass={pnlClass(live?.pnl)} sub={`${live?.trades ?? 0} trades`} />
               <Stat label="Live win rate" value={fmtPct(live?.winRate)} sub={`${live?.open ?? 0} open`} />
@@ -286,7 +309,7 @@ export default function Dashboard() {
                   <span className="text-muted-foreground flex-shrink-0">{fmtTime(l.time)}</span>
                   <span
                     className={
-                      l.level === "error" ? "text-red-300" : l.level === "trade" ? "text-amber-200" : l.level === "tune" ? "text-sky-300" : "text-foreground/80"
+                      l.level === "error" ? "text-red-700" : l.level === "trade" ? "text-amber-700" : l.level === "tune" ? "text-sky-700" : "text-foreground/80"
                     }
                   >
                     {l.message}

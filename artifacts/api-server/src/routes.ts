@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { getEngine, peekEngine, removeEngine, type Engine } from "./bot/engine";
+import { getEngine, peekEngine, removeEngine, runCollective, type Engine } from "./bot/engine";
+import { loadBrain, updateBrain } from "./bot/brain";
 import { APP_VERSION } from "./version";
 import { getKlines, KLINE_INTERVALS, SYMBOL_RE } from "./market";
 import { bawDir, signinState, signout, startSignin, walletStatus } from "./prediction";
@@ -163,8 +164,18 @@ router.post("/bot/live", wrap(async (req, res) => {
 }));
 
 router.get("/settings", (_req, res) => {
-  res.json(engineOf(res).settings);
+  res.json(engineOf(res).effectiveSettings());
 });
+
+// ─── The shared brain (strategy for every user's bot) — admin only ──────────
+
+router.get("/brain", requireAdmin, (_req, res) => {
+  res.json(loadBrain());
+});
+
+router.post("/brain", requireAdmin, wrap(async (req, res) => {
+  res.json(updateBrain(req.body ?? {}, "admin", userOf(res).username));
+}));
 
 router.post("/settings", wrap(async (req, res) => {
   res.json(engineOf(res).updateSettings(req.body));
@@ -251,16 +262,20 @@ router.post("/positions/:id/close", wrap(async (req, res) => {
   res.json(await engineOf(res).request({ cmd: "close_position", id: req.params["id"] }));
 }));
 
-router.post("/learning/calibrate", wrap(async (_req, res) => {
+router.post("/learning/calibrate", requireAdmin, wrap(async (_req, res) => {
   res.json(await engineOf(res).request({ cmd: "calibrate" }));
 }));
 
-router.post("/learning/autotune", wrap(async (_req, res) => {
-  res.json(await engineOf(res).request({ cmd: "autotune" }));
+router.post("/learning/autotune", requireAdmin, wrap(async (_req, res) => {
+  res.json(await runCollective(true));
 }));
 
 router.post("/reset", wrap(async (req, res) => {
   const what = req.body?.what;
+  if (what !== "paper" && !publicUser(userOf(res)).isAdmin) {
+    res.status(403).json({ error: "Only the admin can reset learning" });
+    return;
+  }
   if (!["paper", "learning", "all"].includes(what)) {
     res.status(400).json({ error: "what must be paper, learning or all" });
     return;

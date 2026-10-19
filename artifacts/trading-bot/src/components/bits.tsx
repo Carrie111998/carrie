@@ -19,15 +19,15 @@ export const fmtDateTime = (ms: number) =>
 
 export function pnlClass(v: number | null | undefined) {
   if (v == null || v === 0) return "text-muted-foreground";
-  return v > 0 ? "text-emerald-400" : "text-red-400";
+  return v > 0 ? "text-emerald-700" : "text-red-700";
 }
 
 export function Panel({ title, action, children, className }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={cn("rounded-lg border border-card-border bg-card", className)}>
+    <section className={cn("rounded-2xl border border-card-border bg-card shadow-sm", className)}>
       {(title || action) && (
-        <div className="flex items-center justify-between gap-2 border-b border-card-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-1">
+          <h2 className="text-[15px] font-semibold text-foreground">{title}</h2>
           {action}
         </div>
       )}
@@ -38,7 +38,7 @@ export function Panel({ title, action, children, className }: { title?: ReactNod
 
 export function Stat({ label, value, sub, valueClass }: { label: string; value: ReactNode; sub?: ReactNode; valueClass?: string }) {
   return (
-    <div className="rounded-lg border border-card-border bg-card px-3 py-3 min-w-0">
+    <div className="rounded-2xl border border-card-border bg-card px-3 py-3 min-w-0 shadow-sm">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground truncate">{label}</div>
       <div className={cn("mt-1 text-lg font-semibold font-mono truncate", valueClass)}>{value}</div>
       {sub != null && <div className="text-xs text-muted-foreground truncate">{sub}</div>}
@@ -48,9 +48,9 @@ export function Stat({ label, value, sub, valueClass }: { label: string; value: 
 
 export function SideBadge({ side }: { side: string }) {
   const map: Record<string, string> = {
-    long: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-    short: "bg-red-500/15 text-red-300 border-red-500/30",
-    neutral: "bg-slate-500/15 text-slate-300 border-slate-500/30",
+    long: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30",
+    short: "bg-red-500/15 text-red-700 border-red-500/30",
+    neutral: "bg-slate-500/15 text-slate-700 border-slate-500/30",
   };
   return (
     <span className={cn("inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] font-semibold uppercase", map[side] ?? map.neutral)}>
@@ -64,7 +64,7 @@ export function ModeBadge({ mode }: { mode: string }) {
     <span
       className={cn(
         "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase",
-        mode === "live" ? "bg-amber-500/20 text-amber-300" : "bg-sky-500/15 text-sky-300",
+        mode === "live" ? "bg-amber-500/20 text-amber-700" : "bg-sky-500/15 text-sky-700",
       )}
     >
       {mode}
@@ -104,7 +104,7 @@ export function Gauge({ value, label }: { value: number | null | undefined; labe
   const angle = Math.PI * (1 - v / 100);
   const x = 60 + 48 * Math.cos(angle);
   const y = 60 - 48 * Math.sin(angle);
-  const color = value == null ? "#64748b" : v >= 55 ? "#34d399" : v >= 50 ? "#22d3ee" : v >= 45 ? "#fbbf24" : "#f87171";
+  const color = value == null ? "#64748b" : v >= 55 ? "#059669" : v >= 50 ? "#2563eb" : v >= 45 ? "#d97706" : "#dc2626";
   return (
     <div className="flex flex-col items-center">
       <svg viewBox="0 0 120 70" className="w-40 max-w-full" role="img" aria-label={`${label}: ${value ?? "no data"}`}>

@@ -6,7 +6,11 @@ export const INDICATOR_KEYS = [
   "obv", "vwap", "supertrend", "ichimoku", "momentum", "linreg", "candles", "volume", "trend", "ai",
 ] as const;
 
-export const INTERVALS = ["1m", "3m", "5m", "15m", "30m", "1h", "4h"] as const;
+export const INTERVALS = ["5m", "15m", "1h"] as const;
+/** Coins with Binance Prediction markets the bot trades. */
+export const COINS = ["BTCUSDT", "ETHUSDT", "BNBUSDT"] as const;
+/** How long a started bot keeps running (minutes); 0 = until stopped. */
+export const RUN_DURATIONS = [0, 15, 30, 60, 180, 360, 720] as const;
 
 export interface IndicatorConfig {
   enabled: boolean;
@@ -53,15 +57,38 @@ export interface BotSettings {
   predictionDryRun: boolean;
   predictionAutoRedeem: boolean;
   useCommunityLearning: boolean;
+  runDurationMin: number;
   /** schema version of this settings file; bumped when defaults change for everyone */
   settingsVersion: number;
 }
 
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
+
+/**
+ * "One brain": these strategy settings are shared by every user and only the admin
+ * (or auto-tune, learning from everyone's trades) changes them. Everything else is
+ * each user's own basic setup (coins, slot time, amounts, limits, paper/live).
+ */
+export const BRAIN_KEYS = [
+  "scanIntervalSec", "predictionHorizon", "minConfidence", "maxOpenPositions", "paperPredictionPrice",
+  "allowShort", "slAtrMult", "tpAtrMult", "maxHoldCandles", "minAdx", "feePct", "indicators", "indicatorParams",
+  "autoTune", "autoTuneEvery", "tuneWeights", "tuneThreshold", "tuneRisk", "tuneFilters", "blockedSymbols", "blockedHours",
+] as const satisfies readonly (keyof BotSettings)[];
+
+export function pickBrain(s: BotSettings): Partial<BotSettings> {
+  return Object.fromEntries(BRAIN_KEYS.map((k) => [k, structuredClone(s[k])])) as Partial<BotSettings>;
+}
+
+export function withoutBrain(patch: unknown): Record<string, unknown> {
+  if (!patch || typeof patch !== "object") return {};
+  const out = { ...(patch as Record<string, unknown>) };
+  for (const k of BRAIN_KEYS) delete out[k];
+  return out;
+}
 
 export function defaultSettings(): BotSettings {
   return {
-    symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT"],
+    symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
     interval: "5m",
     scanIntervalSec: 30,
     predictionHorizon: 3,
@@ -105,6 +132,7 @@ export function defaultSettings(): BotSettings {
     predictionDryRun: true,
     predictionAutoRedeem: true,
     useCommunityLearning: true,
+    runDurationMin: 0,
     settingsVersion: SETTINGS_VERSION,
   };
 }
@@ -175,8 +203,10 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
     Array.isArray(v)
       ? [...new Set(v.map((s) => String(s).trim().toUpperCase()).filter((s) => SYMBOL_RE.test(s)))]
       : null;
-  const symbols = symbolList(p.symbols);
-  if (symbols && symbols.length > 0) next.symbols = symbols.slice(0, 40);
+  const symbols = symbolList(p.symbols)?.filter((x) => (COINS as readonly string[]).includes(x));
+  if (symbols && symbols.length > 0) next.symbols = symbols;
+  const dur = Number(p.runDurationMin);
+  if (p.runDurationMin !== undefined && (RUN_DURATIONS as readonly number[]).includes(dur)) next.runDurationMin = dur;
   const blocked = symbolList(p.blockedSymbols);
   if (blocked) next.blockedSymbols = blocked;
   if (Array.isArray(p.blockedHours)) {
@@ -200,7 +230,11 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
       if (range && Number.isFinite(num)) next.indicatorParams[k] = k === "bbStd" ? clamp(num, range) : Math.round(clamp(num, range));
     }
   }
-  // the bot only predicts slots for pairs it scans
-  if (!next.symbols.includes(next.predictionSymbol)) next.symbols = [next.predictionSymbol, ...next.symbols].slice(0, 40);
+  // only BTC / ETH / BNB, at 5m / 15m / 1h slots
+  next.symbols = next.symbols.filter((x) => (COINS as readonly string[]).includes(x));
+  if (next.symbols.length === 0) next.symbols = ["BTCUSDT"];
+  if (!(INTERVALS as readonly string[]).includes(next.interval)) next.interval = "5m";
+  if (!next.symbols.includes(next.predictionSymbol)) next.predictionSymbol = next.symbols[0]!;
+  next.predictionQuery = next.predictionSymbol.replace("USDT", "");
   return next;
 }

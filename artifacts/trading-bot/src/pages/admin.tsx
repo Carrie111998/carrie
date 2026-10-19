@@ -121,10 +121,10 @@ export default function Admin() {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="font-semibold">{u.username}</span>
                       {u.isAdmin && <Badge className="bg-primary/15 text-primary">admin</Badge>}
-                      {u.held && <Badge className="bg-amber-500/20 text-amber-300">on hold</Badge>}
-                      {u.mustChangePassword && <Badge className="bg-sky-500/15 text-sky-300">must change password</Badge>}
-                      {u.running && <Badge className="bg-emerald-500/15 text-emerald-300">bot running</Badge>}
-                      {u.liveEnabled && <Badge className="bg-amber-500/20 text-amber-300">live</Badge>}
+                      {u.held && <Badge className="bg-amber-500/20 text-amber-700">on hold</Badge>}
+                      {u.mustChangePassword && <Badge className="bg-sky-500/15 text-sky-700">must change password</Badge>}
+                      {u.running && <Badge className="bg-emerald-500/15 text-emerald-700">bot running</Badge>}
+                      {u.liveEnabled && <Badge className="bg-amber-500/20 text-amber-700">live</Badge>}
                     </div>
                     <div className="mt-0.5 break-all text-sm text-foreground/90">{u.email}</div>
                     <div className="mt-1 text-xs text-muted-foreground">
@@ -146,11 +146,11 @@ export default function Admin() {
                         <Play className="h-3.5 w-3.5 mr-1" /> Resume
                       </Button>
                     ) : (
-                      <Button size="sm" variant="secondary" className="text-amber-300" disabled={self} onClick={() => setPending({ kind: "hold", user: u })}>
+                      <Button size="sm" variant="secondary" className="text-amber-700" disabled={self} onClick={() => setPending({ kind: "hold", user: u })}>
                         <Pause className="h-3.5 w-3.5 mr-1" /> Hold all trades
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" className="text-red-400" disabled={self} onClick={() => setPending({ kind: "delete", user: u })}>
+                    <Button size="sm" variant="ghost" className="text-red-700" disabled={self} onClick={() => setPending({ kind: "delete", user: u })}>
                       <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
                     </Button>
                   </div>

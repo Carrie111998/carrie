@@ -21,7 +21,7 @@ function Call({ dir, conf }: { dir: string; conf?: number }) {
   if (dir === "neutral") return <span className="inline-flex items-center gap-1 text-muted-foreground"><Minus className="h-4 w-4" /> NO CALL</span>;
   const up = dir === "long";
   return (
-    <span className={cn("inline-flex items-center gap-1 font-bold", up ? "text-emerald-400" : "text-red-400")}>
+    <span className={cn("inline-flex items-center gap-1 font-bold", up ? "text-emerald-700" : "text-red-700")}>
       {up ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
       {up ? "UP" : "DOWN"}
       {conf != null && <span className="font-mono font-normal text-foreground/80">{conf.toFixed(0)}%</span>}
@@ -33,8 +33,8 @@ function BetLine({ bet }: { bet: PredictionBet | undefined }) {
   if (!bet) return null;
   const label: Record<string, string> = { placed: "BET PLACED", dry_run: "DRY RUN", skipped: "NO BET", failed: "BET FAILED" };
   const color: Record<string, string> = {
-    placed: "bg-amber-500/15 text-amber-300", dry_run: "bg-sky-500/15 text-sky-300",
-    skipped: "bg-slate-500/15 text-slate-300", failed: "bg-red-500/15 text-red-300",
+    placed: "bg-amber-500/15 text-amber-700", dry_run: "bg-sky-500/15 text-sky-700",
+    skipped: "bg-slate-500/15 text-slate-700", failed: "bg-red-500/15 text-red-700",
   };
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
@@ -47,7 +47,7 @@ function BetLine({ bet }: { bet: PredictionBet | undefined }) {
       )}
       {bet.reason && <span className="text-muted-foreground">{bet.reason}</span>}
       {bet.result && bet.status === "placed" && (
-        <span className={bet.result === "win" ? "text-emerald-400" : "text-red-400"}>
+        <span className={bet.result === "win" ? "text-emerald-700" : "text-red-700"}>
           {bet.result} {bet.pnl != null && `${bet.pnl >= 0 ? "+" : ""}${bet.pnl.toFixed(4)} USDT (est.)`}
         </span>
       )}
@@ -58,9 +58,9 @@ function BetLine({ bet }: { bet: PredictionBet | undefined }) {
 function Result({ slot }: { slot: Slot }) {
   if (slot.hit == null) return <span className="text-muted-foreground">{slot.actual === "flat" ? "flat" : "—"}</span>;
   return slot.hit ? (
-    <span className="inline-flex items-center gap-0.5 text-emerald-400"><Check className="h-3.5 w-3.5" />won</span>
+    <span className="inline-flex items-center gap-0.5 text-emerald-700"><Check className="h-3.5 w-3.5" />won</span>
   ) : (
-    <span className="inline-flex items-center gap-0.5 text-red-400"><X className="h-3.5 w-3.5" />lost</span>
+    <span className="inline-flex items-center gap-0.5 text-red-700"><X className="h-3.5 w-3.5" />lost</span>
   );
 }
 
@@ -207,12 +207,12 @@ export default function LiveMarket() {
             <div className="text-xs text-muted-foreground">
               Current Price{" "}
               {diff != null && (
-                <span className={diff >= 0 ? "text-emerald-400" : "text-red-400"}>
+                <span className={diff >= 0 ? "text-emerald-700" : "text-red-700"}>
                   {diff >= 0 ? "+" : "-"}{usd(Math.abs(diff), dp)}
                 </span>
               )}
             </div>
-            <div className="text-xl sm:text-2xl font-bold font-mono text-amber-400">{usd(price, dp)}</div>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-amber-700">{usd(price, dp)}</div>
           </div>
         </div>
       </div>
@@ -220,7 +220,7 @@ export default function LiveMarket() {
       {/* Live chart */}
       <div className="h-52 sm:h-64 px-1">
         {error ? (
-          <div className="flex h-full items-center justify-center text-sm text-red-300 px-4 text-center">Live data unavailable: {error}</div>
+          <div className="flex h-full items-center justify-center text-sm text-red-700 px-4 text-center">Live data unavailable: {error}</div>
         ) : view.length < 2 ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Connecting to Binance live data…</div>
         ) : (
@@ -283,7 +283,7 @@ export default function LiveMarket() {
           onClick={() => setSelected("current")}
           className={cn(
             "flex h-9 flex-shrink-0 items-center gap-1.5 rounded-md border px-3 text-sm font-mono",
-            selected === "current" ? "border-emerald-500 text-emerald-400 bg-emerald-500/10" : "border-border",
+            selected === "current" ? "border-emerald-500 text-emerald-700 bg-emerald-500/10" : "border-border",
           )}
         >
           <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -336,7 +336,7 @@ export default function LiveMarket() {
                 </span>
               )}
               {onTrack != null && (
-                <span className={cn("rounded px-2 py-0.5 text-xs font-semibold", onTrack ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300")}>
+                <span className={cn("rounded px-2 py-0.5 text-xs font-semibold", onTrack ? "bg-emerald-500/15 text-emerald-700" : "bg-red-500/15 text-red-700")}>
                   {onTrack ? "on track" : "behind"}
                 </span>
               )}
@@ -345,10 +345,10 @@ export default function LiveMarket() {
             <BetLine bet={betFor(start)} />
             {paperBet && (
               <div className="flex flex-wrap items-center gap-x-3 text-xs">
-                <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-semibold text-sky-300">PAPER BET</span>
+                <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-semibold text-sky-700">PAPER BET</span>
                 <span className="font-mono">
                   {usd(paperBet.quote)} on {paperBet.side === "long" ? "UP" : "DOWN"} → {paperBet.qty.toFixed(2)} shares · now{" "}
-                  <span className={paperBet.unrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}>
+                  <span className={paperBet.unrealizedPnl >= 0 ? "text-emerald-700" : "text-red-700"}>
                     {paperBet.unrealizedPnl >= 0 ? "+" : ""}{paperBet.unrealizedPnl.toFixed(2)}
                   </span>
                 </span>

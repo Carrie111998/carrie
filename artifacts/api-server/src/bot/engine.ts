@@ -3,7 +3,8 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import path from "path";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
-import { applyPatch, defaultSettings, SETTINGS_VERSION, type BotSettings } from "./settings";
+import { applyPatch, defaultSettings, SETTINGS_VERSION, withoutBrain, type BotSettings } from "./settings";
+import { loadBrain, brainSettings, onBrainChange, setLastTuneTrades, updateBrain } from "./brain";
 import { DATA_DIR, workspaceRoot } from "./paths";
 import { BAW_BIN } from "../prediction";
 
@@ -30,11 +31,51 @@ function communityRecommended(): Partial<BotSettings> {
   return readJson<{ recommended?: Partial<BotSettings> }>(path.join(GLOBAL_DIR, "collective.json"))?.recommended ?? {};
 }
 
-/** Rebuild the anonymous community dataset from every user's trades. */
-export function runCollective() {
-  execFile(process.env["PYTHON"] ?? "python3", [COLLECTIVE_SCRIPT, DATA_DIR], { timeout: 120_000 }, (err, stdout, stderr) => {
-    if (err) logger.warn({ err: String(err), stderr: stderr?.slice(0, 500) }, "Community learning update failed");
-    else logger.info({ result: stdout.trim().slice(0, 300) }, "Community learning updated");
+/** Create the shared brain from the first admin's settings (only the first time). */
+export function initBrain(adminIds: string[]) {
+  loadBrain(() => {
+    for (const id of adminIds) {
+      const saved = readJson<Record<string, unknown>>(path.join(userDataDir(id), "settings.json"));
+      if (saved) return applyPatch(defaultSettings(), saved);
+    }
+    return applyPatch(defaultSettings(), communityRecommended());
+  });
+}
+
+/**
+ * Rebuild the anonymous dataset from every user's trades, then (if auto-tune is on)
+ * tune the shared brain once enough new trades have settled.
+ */
+export function runCollective(force = false): Promise<{ applied: number; trades: number; message: string }> {
+  return new Promise((resolve) => {
+    execFile(process.env["PYTHON"] ?? "python3", [COLLECTIVE_SCRIPT, DATA_DIR], { timeout: 120_000 }, (err, stdout, stderr) => {
+      if (err) {
+        logger.warn({ err: String(err), stderr: stderr?.slice(0, 500) }, "Community learning update failed");
+        resolve({ applied: 0, trades: 0, message: "Learning update failed" });
+        return;
+      }
+      logger.info({ result: stdout.trim().slice(0, 300) }, "Community learning updated");
+      const col = readJson<{ recommended?: Partial<BotSettings>; changes?: { param: string; from: unknown; to: unknown; reason?: string }[]; summary?: { trades?: number } }>(
+        path.join(GLOBAL_DIR, "collective.json"),
+      );
+      const b = loadBrain();
+      const trades = col?.summary?.trades ?? 0;
+      const due = force || (b.settings.autoTune && trades - b.lastTuneTrades >= (b.settings.autoTuneEvery ?? 5));
+      const rec = col?.recommended ?? {};
+      if (!due) {
+        resolve({ applied: 0, trades, message: b.settings.autoTune ? "Waiting for more settled trades" : "Auto-tune is off" });
+        return;
+      }
+      setLastTuneTrades(trades);
+      if (Object.keys(rec).length === 0) {
+        resolve({ applied: 0, trades, message: trades < 15 ? "Need at least 15 settled trades from all users" : "No changes needed" });
+        return;
+      }
+      updateBrain(rec, "auto-tune", undefined, col?.changes ?? []);
+      const n = col?.changes?.length ?? Object.keys(rec).length;
+      logger.info({ trades, changes: n }, "Auto-tune updated the shared brain");
+      resolve({ applied: n, trades, message: `Applied ${n} change(s) from ${trades} trades` });
+    });
   });
 }
 
@@ -89,15 +130,36 @@ export class Engine {
         // v2 defaults for everyone: fixed 1.50 bets (only replaces the old 1.00 default),
         // dummy Binance Prediction paper trading, community learning on
         const upgrade: Partial<BotSettings> = { paperMode: "prediction", useCommunityLearning: true };
-        if (Number(saved["paperTradeAmountUsdt"] ?? 1) <= 1) upgrade.paperTradeAmountUsdt = 1.5;
-        if (Number(saved["predictionBetUsdt"] ?? 1) <= 1) upgrade.predictionBetUsdt = 1.5;
+        if (version < 2 && Number(saved["paperTradeAmountUsdt"] ?? 1) <= 1) upgrade.paperTradeAmountUsdt = 1.5;
+        if (version < 2 && Number(saved["predictionBetUsdt"] ?? 1) <= 1) upgrade.predictionBetUsdt = 1.5;
         this.settings = applyPatch(this.settings, upgrade);
+        // v3: BTC/ETH/BNB only at 5m/15m/1h (applyPatch already normalised), run until stopped
+        this.settings.runDurationMin = Number(saved["runDurationMin"] ?? 0) || 0;
         logger.info({ userId, from: version, to: SETTINGS_VERSION }, "Upgraded user settings");
       }
     }
     this.settings.settingsVersion = SETTINGS_VERSION;
     writeJson(this.settingsFile, this.settings);
     this.credentials = readJson<Credentials>(this.credentialsFile);
+  }
+
+  /** What this user's bot runs with: their basic setup + the shared brain. */
+  effectiveSettings(): BotSettings {
+    return { ...this.settings, ...brainSettings() } as BotSettings;
+  }
+
+  /** Per-user auto-tune is off: the shared brain is tuned centrally from everyone's trades. */
+  private engineSettings(): BotSettings {
+    return { ...this.effectiveSettings(), autoTune: false, useCommunityLearning: true };
+  }
+
+  pushSettings() {
+    try {
+      this.send({ cmd: "settings", settings: this.engineSettings() });
+    } catch {
+      /* engine restarting — it gets settings on init */
+    }
+    this.broadcast("settings", this.effectiveSettings());
   }
 
   subscribe(fn: Listener) {
@@ -156,7 +218,7 @@ export class Engine {
         if (this.wasRunning) this.send({ cmd: "start" });
       }, 3000);
     });
-    this.send({ cmd: "init", dataDir: this.dataDir, settings: this.settings, credentials: this.credentials ?? {} });
+    this.send({ cmd: "init", dataDir: this.dataDir, settings: this.engineSettings(), credentials: this.credentials ?? {} });
   }
 
   private send(msg: object) {
@@ -183,10 +245,44 @@ export class Engine {
     });
   }
 
-  command(msg: Record<string, unknown>) {
+  private stopTimer: NodeJS.Timeout | null = null;
+  /** When the current run ends (ms), or null when it runs until stopped. */
+  stopAt: number | null = null;
+
+  command(msg: Record<string, unknown>, opts: { stopAt?: number | null } = {}) {
     this.send(msg);
-    if (msg["cmd"] === "start") writeJson(this.runtimeFile, { running: true });
-    if (msg["cmd"] === "stop") writeJson(this.runtimeFile, { running: false });
+    if (msg["cmd"] === "start") {
+      const mins = this.settings.runDurationMin;
+      this.stopAt = opts.stopAt !== undefined ? opts.stopAt : mins > 0 ? Date.now() + mins * 60_000 : null;
+      this.armStopTimer();
+      writeJson(this.runtimeFile, { running: true, stopAt: this.stopAt });
+    }
+    if (msg["cmd"] === "stop") {
+      this.stopAt = null;
+      this.armStopTimer();
+      writeJson(this.runtimeFile, { running: false, stopAt: null });
+    }
+    this.broadcast("state", this.publicState());
+  }
+
+  private armStopTimer() {
+    if (this.stopTimer) clearTimeout(this.stopTimer);
+    this.stopTimer = null;
+    if (this.stopAt == null) return;
+    // setTimeout can't wait longer than ~24 days; runs are at most 12 h
+    this.stopTimer = setTimeout(() => {
+      logger.info({ userId: this.userId }, "Run time finished — stopping bot");
+      try {
+        this.command({ cmd: "live", enabled: false });
+        this.command({ cmd: "stop" });
+      } catch {
+        /* engine down */
+      }
+    }, Math.max(0, this.stopAt - Date.now()));
+  }
+
+  get savedStopAt(): number | null {
+    return readJson<{ stopAt?: number | null }>(this.runtimeFile)?.stopAt ?? null;
   }
 
   private onEvent(ev: { type: string; data: unknown; reqId?: string }) {
@@ -208,9 +304,7 @@ export class Engine {
         break;
       }
       case "settings_tuned":
-        this.settings = applyPatch(this.settings, ev.data);
-        writeJson(this.settingsFile, this.settings);
-        this.broadcast("settings", this.settings);
+        // only the shared brain is tuned (centrally); ignore per-user tuning
         break;
       case "log": {
         const entry = ev.data as LogEntry;
@@ -234,20 +328,20 @@ export class Engine {
   shutdown() {
     this.stopped = true;
     if (this.restartTimer) clearTimeout(this.restartTimer);
+    if (this.stopTimer) clearTimeout(this.stopTimer);
     this.proc?.kill();
     this.proc = null;
   }
 
   publicState() {
-    return { ...(this.state ?? {}), engineOnline: this.proc !== null, logs: this.logs.slice(0, 60) };
+    return { ...(this.state ?? {}), engineOnline: this.proc !== null, stopAt: this.stopAt, logs: this.logs.slice(0, 60) };
   }
 
   updateSettings(patch: unknown) {
-    this.settings = applyPatch(this.settings, patch);
+    this.settings = applyPatch(this.settings, withoutBrain(patch));
     writeJson(this.settingsFile, this.settings);
-    this.send({ cmd: "settings", settings: this.settings });
-    this.broadcast("settings", this.settings);
-    return this.settings;
+    this.pushSettings();
+    return this.effectiveSettings();
   }
 
   resetSettings() {
@@ -271,6 +365,7 @@ export class Engine {
 // ─── One engine per user ─────────────────────────────────────────────────────
 
 const engines = new Map<string, Engine>();
+onBrainChange(() => engines.forEach((e) => e.pushSettings()));
 const LEGACY_FILES = ["bot_data.json", "settings.json", "credentials.json"];
 
 export const userDataDir = (userId: string) => path.join(DATA_DIR, "users", userId);
@@ -312,6 +407,9 @@ export function resumeEngines(userIds: string[]) {
     const dir = userDataDir(id);
     if (!existsSync(path.join(dir, "runtime.json"))) continue;
     const e = getEngine(id);
-    if (e.wasRunning) e.command({ cmd: "start" });
+    if (!e.wasRunning) continue;
+    const stopAt = e.savedStopAt;
+    if (stopAt != null && stopAt <= Date.now()) e.command({ cmd: "stop" }); // run time ended while the server was down
+    else e.command({ cmd: "start" }, { stopAt });
   }
 }
