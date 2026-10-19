@@ -14,7 +14,7 @@ PORT=5173 BASE_PATH=/ pnpm --filter @workspace/trading-bot run dev
 # Production: one process serves API + dashboard
 PORT=1 BASE_PATH=/ pnpm --filter @workspace/trading-bot run build
 pnpm --filter @workspace/api-server run build
-PORT=8080 APP_PASSWORD=choose-a-password node artifacts/api-server/dist/index.mjs
+PORT=8080 SMTP_HOST=smtp.gmail.com SMTP_USER=you@gmail.com SMTP_PASS=app-password node artifacts/api-server/dist/index.mjs
 ```
 
 On Replit, the existing run configuration starts both services.
@@ -22,11 +22,15 @@ On Replit, the existing run configuration starts both services.
 | Variable | Purpose |
 | --- | --- |
 | `PORT` | HTTP port (required) |
-| `APP_PASSWORD` | Optional. Protects the dashboard and API with a password. **Set it whenever the app is reachable from the internet**, because it controls live trading. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email server used to send sign-up and password-reset codes (OTP). For Gmail use `smtp.gmail.com`, port 587 and an [app password](https://myaccount.google.com/apppasswords). **If not set, codes are written to the server log instead.** |
+| `MAX_USERS` | Maximum number of accounts that can sign up (default 50) |
 | `BOT_DATA_DIR` | Where trades, learning data, settings and API keys are saved (default `./data`, git-ignored) |
 | `BOT_SIMULATE=1` | Offline simulated prices and orders, for testing without Binance |
 
 ## Features
+
+- **Accounts**: a login page opens first. Sign up with a username, email and password, then confirm the 6-digit code sent to your email. You can log in with your username or email, and there is a "Forgot password" option that also uses an email code. Many users can sign up, and **each one gets their own bot, settings, API keys, paper account and trade history** in `data/users/<id>/`. Passwords are hashed with scrypt and sessions last 30 days.
+- **Bet amount**: choose a fixed USD amount per trade (**standard and minimum is $1**, with quick picks $1/$2/$5/$10/$25/$50) or a % of the paper balance. Live orders have their own size. Binance rejects orders under about 5 USDT on most pairs, so live defaults to $5.
 
 - **18 indicators and prediction tools, plus a self-learning AI model**: RSI, MACD, Bollinger Bands, EMA cross, Stochastic, ADX/DMI, CCI, Williams %R, MFI, OBV, VWAP, Supertrend, Ichimoku, Rate of Change, Linear-regression forecast, Candlestick patterns, Volume spikes, EMA-100 trend, and an online logistic-regression model trained on real outcomes. Votes (-1…+1) are combined by learned weights into one direction and a 0–100 confidence.
 - **Auto paper trading** while the bot runs: ATR-based stop-loss and take-profit, max hold time, fees, long and short.
@@ -36,7 +40,7 @@ On Replit, the existing run configuration starts both services.
 - **Loss study**: losses broken down by exit reason, pair, hour, confidence, market regime and direction, plus the indicators that backed losing trades, with plain-English insights.
 - **Auto-tune**: every N closed trades it re-weights indicators, moves the minimum confidence, adjusts SL/TP, and blocks weak pairs, hours, shorts and ranging markets. Every change is logged with its reason.
 - **Calibrate**: learns from the last 1000 historical candles per pair before risking anything.
-- **All data is kept**: trades, paper account, learning and settings are saved to disk and survive restarts. Trades export to CSV.
+- **All data is kept**: trades, paper account, learning and settings are saved to disk and survive restarts. Bots that were paper trading resume automatically after a server restart. Live trading always needs to be switched on again. Trades export to CSV.
 - **Mobile-first dashboard**: Dashboard, Signals, Learning, History and Settings, with bottom navigation on phones.
 
 ## Code map
@@ -45,6 +49,7 @@ On Replit, the existing run configuration starts both services.
 - `artifacts/api-server/src/bot/indicators.py` — indicators and votes
 - `artifacts/api-server/src/bot/learner.py` — accuracy tracking, AI model, loss study, auto-tune
 - `artifacts/api-server/src/bot/binance_client.py` — Binance REST client (public, signed, testnet) and offline simulator
+- `artifacts/api-server/src/auth.ts` — users, email OTP, sessions
 - `artifacts/api-server/src/bot/engine.ts`, `settings.ts`, `src/routes.ts` — Node process manager, settings validation, REST API (`/api`) and WebSocket (`/ws`)
 - `artifacts/trading-bot/src/` — React dashboard
 

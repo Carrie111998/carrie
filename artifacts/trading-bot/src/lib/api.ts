@@ -16,6 +16,8 @@ export interface BotSettings {
   minConfidence: number;
   maxOpenPositions: number;
   paperStartBalance: number;
+  paperTradeMode: "fixed" | "percent";
+  paperTradeAmountUsdt: number;
   paperTradeSizePct: number;
   allowShort: boolean;
   slAtrMult: number;
@@ -200,22 +202,29 @@ export interface CredentialInfo {
   testnet: boolean;
 }
 
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+}
+
 // ─── Fetch helpers ───────────────────────────────────────────────────────────
 
 const BASE = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api`;
-const PW_KEY = "bot-password";
+const TOKEN_KEY = "bot-session";
 
-export function getPassword(): string {
+export function getToken(): string {
   try {
-    return localStorage.getItem(PW_KEY) ?? "";
+    return localStorage.getItem(TOKEN_KEY) ?? "";
   } catch {
     return "";
   }
 }
 
-export function setPassword(pw: string) {
+export function setToken(token: string | null) {
   try {
-    localStorage.setItem(PW_KEY, pw);
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
   } catch {
     /* storage unavailable */
   }
@@ -227,21 +236,39 @@ export class ApiError extends Error {
   }
 }
 
+let onUnauthorized: (() => void) | null = null;
+export const setUnauthorizedHandler = (fn: (() => void) | null) => {
+  onUnauthorized = fn;
+};
+
+export const authHeaders = (): Record<string, string> => {
+  const t = getToken();
+  return t ? { authorization: `Bearer ${t}` } : {};
+};
+
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: init.method ?? "GET",
-    headers: { "content-type": "application/json", "x-app-password": getPassword() },
+    headers: { "content-type": "application/json", ...authHeaders() },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new ApiError(data?.error ?? `HTTP ${res.status}`, res.status);
+  let data: { error?: string } | null = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    /* non-JSON error page */
+  }
+  if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/auth/")) onUnauthorized?.();
+    throw new ApiError(data?.error ?? `HTTP ${res.status}`, res.status);
+  }
   return data as T;
 }
 
 export function wsUrl(): string {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}/ws?password=${encodeURIComponent(getPassword())}`;
+  return `${proto}//${window.location.host}/ws?token=${encodeURIComponent(getToken())}`;
 }
 
 export const tradesCsvUrl = () => `${BASE}/trades.csv`;

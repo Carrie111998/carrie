@@ -1,9 +1,12 @@
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
 import { applyPatch, defaultSettings, type BotSettings } from "./settings";
+import { DATA_DIR, workspaceRoot } from "./paths";
+
+export { DATA_DIR, workspaceRoot };
 
 export interface Credentials {
   apiKey: string;
@@ -17,13 +20,6 @@ export interface LogEntry {
   message: string;
 }
 
-export const workspaceRoot = process.cwd().endsWith(path.join("artifacts", "api-server"))
-  ? path.resolve(process.cwd(), "../..")
-  : process.cwd();
-
-export const DATA_DIR = path.resolve(process.env["BOT_DATA_DIR"] ?? path.join(workspaceRoot, "data"));
-const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
-const CREDENTIALS_FILE = path.join(DATA_DIR, "credentials.json");
 const BOT_SCRIPT = path.join(workspaceRoot, "artifacts/api-server/src/bot/binance_bot.py");
 
 function readJson<T>(file: string): T | null {
@@ -36,7 +32,7 @@ function readJson<T>(file: string): T | null {
 }
 
 function writeJson(file: string, data: unknown, secret = false) {
-  mkdirSync(DATA_DIR, { recursive: true });
+  mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp`;
   writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: secret ? 0o600 : 0o644 });
   renameSync(tmp, file);
@@ -45,18 +41,29 @@ function writeJson(file: string, data: unknown, secret = false) {
 
 type Listener = (type: string, data: unknown) => void;
 
-/** Owns the Python engine process, settings and API credentials. */
-class Engine {
+/** One user's bot: owns a Python engine process, that user's settings and API credentials. */
+export class Engine {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private buffer = "";
   private listeners = new Set<Listener>();
   private pending = new Map<string, { resolve: (v: unknown) => void; timer: NodeJS.Timeout }>();
   private restartTimer: NodeJS.Timeout | null = null;
+  private readonly settingsFile: string;
+  private readonly credentialsFile: string;
+  private readonly runtimeFile: string;
 
-  settings: BotSettings = applyPatch(defaultSettings(), readJson(SETTINGS_FILE) ?? {});
-  private credentials: Credentials | null = readJson<Credentials>(CREDENTIALS_FILE);
+  settings: BotSettings;
+  private credentials: Credentials | null;
   state: Record<string, unknown> | null = null;
   logs: LogEntry[] = [];
+
+  constructor(readonly userId: string, readonly dataDir: string) {
+    this.settingsFile = path.join(dataDir, "settings.json");
+    this.credentialsFile = path.join(dataDir, "credentials.json");
+    this.runtimeFile = path.join(dataDir, "runtime.json");
+    this.settings = applyPatch(defaultSettings(), readJson(this.settingsFile) ?? {});
+    this.credentials = readJson<Credentials>(this.credentialsFile);
+  }
 
   subscribe(fn: Listener) {
     this.listeners.add(fn);
@@ -73,9 +80,14 @@ class Engine {
     }
   }
 
+  /** Was the bot running before the server restarted? */
+  get wasRunning() {
+    return readJson<{ running: boolean }>(this.runtimeFile)?.running === true;
+  }
+
   start() {
     if (this.proc) return;
-    logger.info({ script: BOT_SCRIPT, dataDir: DATA_DIR }, "Starting Python bot engine");
+    logger.info({ userId: this.userId, dataDir: this.dataDir }, "Starting Python bot engine");
     const proc = spawn(process.env["PYTHON"] ?? "python3", [BOT_SCRIPT], { stdio: ["pipe", "pipe", "pipe"], env: process.env });
     this.proc = proc;
     proc.stdout.on("data", (chunk: Buffer) => {
@@ -91,9 +103,9 @@ class Engine {
         }
       }
     });
-    proc.stderr.on("data", (chunk: Buffer) => logger.warn({ stderr: chunk.toString().trim() }, "Engine stderr"));
+    proc.stderr.on("data", (chunk: Buffer) => logger.warn({ userId: this.userId, stderr: chunk.toString().trim() }, "Engine stderr"));
     proc.on("exit", (code) => {
-      logger.error({ code }, "Python engine exited — restarting in 3s");
+      logger.error({ userId: this.userId, code }, "Python engine exited — restarting in 3s");
       this.proc = null;
       this.buffer = "";
       if (this.state) (this.state["status"] as Record<string, unknown>)["running"] = false;
@@ -101,9 +113,10 @@ class Engine {
       this.restartTimer ??= setTimeout(() => {
         this.restartTimer = null;
         this.start();
+        if (this.wasRunning) this.send({ cmd: "start" });
       }, 3000);
     });
-    this.send({ cmd: "init", dataDir: DATA_DIR, settings: this.settings, credentials: this.credentials ?? {} });
+    this.send({ cmd: "init", dataDir: this.dataDir, settings: this.settings, credentials: this.credentials ?? {} });
   }
 
   private send(msg: object) {
@@ -132,6 +145,8 @@ class Engine {
 
   command(msg: Record<string, unknown>) {
     this.send(msg);
+    if (msg["cmd"] === "start") writeJson(this.runtimeFile, { running: true });
+    if (msg["cmd"] === "stop") writeJson(this.runtimeFile, { running: false });
   }
 
   private onEvent(ev: { type: string; data: unknown; reqId?: string }) {
@@ -154,7 +169,7 @@ class Engine {
       }
       case "settings_tuned":
         this.settings = applyPatch(this.settings, ev.data);
-        writeJson(SETTINGS_FILE, this.settings);
+        writeJson(this.settingsFile, this.settings);
         this.broadcast("settings", this.settings);
         break;
       case "log": {
@@ -168,7 +183,7 @@ class Engine {
         this.broadcast("trade_closed", ev.data);
         break;
       case "ready":
-        logger.info({ data: ev.data }, "Python engine ready");
+        logger.info({ userId: this.userId, data: ev.data }, "Python engine ready");
         break;
     }
   }
@@ -179,7 +194,7 @@ class Engine {
 
   updateSettings(patch: unknown) {
     this.settings = applyPatch(this.settings, patch);
-    writeJson(SETTINGS_FILE, this.settings);
+    writeJson(this.settingsFile, this.settings);
     this.send({ cmd: "settings", settings: this.settings });
     this.broadcast("settings", this.settings);
     return this.settings;
@@ -198,9 +213,46 @@ class Engine {
 
   setCredentials(c: Credentials | null) {
     this.credentials = c;
-    writeJson(CREDENTIALS_FILE, c ?? {}, true);
+    writeJson(this.credentialsFile, c ?? {}, true);
     this.send({ cmd: "credentials", credentials: c ?? {} });
   }
 }
 
-export const engine = new Engine();
+// ─── One engine per user ─────────────────────────────────────────────────────
+
+const engines = new Map<string, Engine>();
+const LEGACY_FILES = ["bot_data.json", "settings.json", "credentials.json"];
+
+export const userDataDir = (userId: string) => path.join(DATA_DIR, "users", userId);
+
+export function getEngine(userId: string): Engine {
+  let e = engines.get(userId);
+  if (!e) {
+    const dir = userDataDir(userId);
+    // Data from the single-user version (data/*.json) is handed to the first account created.
+    const usersDir = path.join(DATA_DIR, "users");
+    const firstAccount = !existsSync(usersDir) || readdirSync(usersDir).length === 0;
+    if (firstAccount && LEGACY_FILES.some((f) => existsSync(path.join(DATA_DIR, f)))) {
+      mkdirSync(dir, { recursive: true });
+      for (const f of LEGACY_FILES) {
+        if (existsSync(path.join(DATA_DIR, f))) renameSync(path.join(DATA_DIR, f), path.join(dir, f));
+      }
+      logger.info({ userId }, "Moved single-user bot data into the first account");
+    }
+    mkdirSync(dir, { recursive: true });
+    e = new Engine(userId, dir);
+    engines.set(userId, e);
+    e.start();
+  }
+  return e;
+}
+
+/** On server boot, resume bots that were running (paper only — live trading always needs a fresh confirmation). */
+export function resumeEngines(userIds: string[]) {
+  for (const id of userIds) {
+    const dir = userDataDir(id);
+    if (!existsSync(path.join(dir, "runtime.json"))) continue;
+    const e = getEngine(id);
+    if (e.wasRunning) e.command({ cmd: "start" });
+  }
+}

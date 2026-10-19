@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
-import { engine } from "./engine";
-import { checkPassword } from "../routes";
+import { getEngine } from "./engine";
+import { userFromToken } from "../auth";
 import { logger } from "../lib/logger";
 
 export function setupWebSocket(server: Server) {
@@ -9,10 +9,12 @@ export function setupWebSocket(server: Server) {
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url ?? "/ws", "http://localhost");
-    if (!checkPassword(url.searchParams.get("password"))) {
-      ws.close(4401, "Password required");
+    const user = userFromToken(url.searchParams.get("token"));
+    if (!user) {
+      ws.close(4401, "Please log in");
       return;
     }
+    const engine = getEngine(user.id);
 
     const send = (type: string, data: unknown) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, data }));

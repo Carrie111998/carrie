@@ -2,6 +2,8 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BotProvider } from "@/hooks/useBot";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import AuthScreen from "@/pages/auth";
 import Layout from "@/pages/layout";
 import Dashboard from "@/pages/dashboard";
 import Signals from "@/pages/signals";
@@ -25,14 +27,26 @@ function Router() {
   );
 }
 
+function Gate() {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="min-h-screen bg-background" />;
+  if (!user) return <AuthScreen />;
+  return (
+    // keyed by user so switching accounts starts from a clean state
+    <BotProvider key={user.id}>
+      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <Router />
+      </WouterRouter>
+    </BotProvider>
+  );
+}
+
 function App() {
   return (
     <TooltipProvider>
-      <BotProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-      </BotProvider>
+      <AuthProvider>
+        <Gate />
+      </AuthProvider>
       <Toaster />
     </TooltipProvider>
   );

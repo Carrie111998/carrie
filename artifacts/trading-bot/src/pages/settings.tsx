@@ -36,6 +36,41 @@ function Num({ value, onChange, step = 1, min, max }: { value: number; onChange:
   );
 }
 
+const QUICK_AMOUNTS = [1, 2, 5, 10, 25, 50];
+
+/** USD amount with quick-pick chips; never below the 1 USD minimum. */
+function AmountInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex">
+        <span className="inline-flex items-center rounded-l-md border border-r-0 border-input bg-secondary px-3 text-sm text-muted-foreground">$</span>
+        <Input
+          type="number"
+          inputMode="decimal"
+          min={1}
+          step={0.5}
+          className="rounded-l-none"
+          value={Number.isFinite(value) ? value : ""}
+          onChange={(e) => onChange(e.target.value === "" ? NaN : Number(e.target.value))}
+          onBlur={() => onChange(Number.isFinite(value) ? Math.max(1, value) : 1)}
+        />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {QUICK_AMOUNTS.map((a) => (
+          <button
+            key={a}
+            type="button"
+            onClick={() => onChange(a)}
+            className={`rounded border px-2 py-0.5 text-xs ${value === a ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
+          >
+            ${a}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="flex items-start justify-between gap-3 py-1">
@@ -230,7 +265,23 @@ export default function Settings() {
       <Panel title="Paper trading & risk">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Paper start balance (USDT)" hint="Applied after Reset paper account."><Num value={n("paperStartBalance")} onChange={(v) => set("paperStartBalance", v)} /></Field>
-          <Field label="Trade size (% of balance)"><Num value={n("paperTradeSizePct")} onChange={(v) => set("paperTradeSizePct", v)} step={0.5} /></Field>
+          <Field label="Bet amount type">
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={draft.paperTradeMode}
+              onChange={(e) => set("paperTradeMode", e.target.value as BotSettings["paperTradeMode"])}
+            >
+              <option value="fixed">Fixed USD per trade</option>
+              <option value="percent">% of paper balance</option>
+            </select>
+          </Field>
+          {draft.paperTradeMode === "fixed" ? (
+            <Field label="Bet amount per trade (USD)" hint="Minimum and standard bet is 1 USD.">
+              <AmountInput value={n("paperTradeAmountUsdt")} onChange={(v) => set("paperTradeAmountUsdt", v)} />
+            </Field>
+          ) : (
+            <Field label="Trade size (% of balance)" hint="Never less than 1 USD per trade."><Num value={n("paperTradeSizePct")} onChange={(v) => set("paperTradeSizePct", v)} step={0.5} /></Field>
+          )}
           <Field label="Max open paper positions"><Num value={n("maxOpenPositions")} onChange={(v) => set("maxOpenPositions", v)} /></Field>
           <Field label="Stop-loss (× ATR)"><Num value={n("slAtrMult")} onChange={(v) => set("slAtrMult", v)} step={0.1} /></Field>
           <Field label="Take-profit (× ATR)"><Num value={n("tpAtrMult")} onChange={(v) => set("tpAtrMult", v)} step={0.1} /></Field>
@@ -244,7 +295,12 @@ export default function Settings() {
 
       <Panel title="Live trading safety">
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Order size (USDT)" hint="Binance minimum is about 5–10 USDT."><Num value={n("liveTradeAmountUsdt")} onChange={(v) => set("liveTradeAmountUsdt", v)} /></Field>
+          <Field
+            label="Live order size (USD)"
+            hint={n("liveTradeAmountUsdt") < 5 ? "⚠ Binance rejects orders under ~5 USDT on most pairs." : "Binance requires at least ~5 USDT per order on most pairs."}
+          >
+            <AmountInput value={n("liveTradeAmountUsdt")} onChange={(v) => set("liveTradeAmountUsdt", v)} />
+          </Field>
           <Field label="Max open live positions"><Num value={n("liveMaxOpenPositions")} onChange={(v) => set("liveMaxOpenPositions", v)} /></Field>
           <Field label="Daily loss limit (USDT)" hint="Live trading switches off when hit."><Num value={n("liveDailyLossLimitUsdt")} onChange={(v) => set("liveDailyLossLimitUsdt", v)} /></Field>
         </div>

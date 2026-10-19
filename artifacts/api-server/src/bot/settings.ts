@@ -21,6 +21,8 @@ export interface BotSettings {
   minConfidence: number;
   maxOpenPositions: number;
   paperStartBalance: number;
+  paperTradeMode: "fixed" | "percent";
+  paperTradeAmountUsdt: number;
   paperTradeSizePct: number;
   allowShort: boolean;
   slAtrMult: number;
@@ -51,7 +53,9 @@ export function defaultSettings(): BotSettings {
     predictionHorizon: 3,
     minConfidence: 62,
     maxOpenPositions: 5,
-    paperStartBalance: 10000,
+    paperStartBalance: 100,
+    paperTradeMode: "fixed",
+    paperTradeAmountUsdt: 1,
     paperTradeSizePct: 5,
     allowShort: true,
     slAtrMult: 1.5,
@@ -74,7 +78,7 @@ export function defaultSettings(): BotSettings {
     tuneFilters: true,
     blockedSymbols: [],
     blockedHours: [],
-    liveTradeAmountUsdt: 20,
+    liveTradeAmountUsdt: 5,
     liveMaxOpenPositions: 3,
     liveDailyLossLimitUsdt: 50,
   };
@@ -87,6 +91,7 @@ const BOUNDS: Record<string, [number, number]> = {
   minConfidence: [50, 95],
   maxOpenPositions: [1, 30],
   paperStartBalance: [100, 10_000_000],
+  paperTradeAmountUsdt: [1, 1_000_000],
   paperTradeSizePct: [0.5, 100],
   slAtrMult: [0.3, 10],
   tpAtrMult: [0.3, 20],
@@ -94,7 +99,7 @@ const BOUNDS: Record<string, [number, number]> = {
   minAdx: [0, 60],
   feePct: [0, 1],
   autoTuneEvery: [1, 200],
-  liveTradeAmountUsdt: [5, 100_000],
+  liveTradeAmountUsdt: [1, 100_000],
   liveMaxOpenPositions: [1, 20],
   liveDailyLossLimitUsdt: [1, 1_000_000],
 };
@@ -126,6 +131,7 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
   for (const key of ["allowShort", "autoTune", "tuneWeights", "tuneThreshold", "tuneRisk", "tuneFilters"]) {
     if (typeof p[key] === "boolean") n[key] = p[key];
   }
+  if (p.paperTradeMode === "fixed" || p.paperTradeMode === "percent") next.paperTradeMode = p.paperTradeMode;
   if (typeof p.interval === "string" && (INTERVALS as readonly string[]).includes(p.interval)) {
     next.interval = p.interval as BotSettings["interval"];
   }

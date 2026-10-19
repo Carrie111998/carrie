@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
-import { api, getPassword, tradesCsvUrl, type Trade } from "@/lib/api";
+import { api, authHeaders, tradesCsvUrl, type Trade } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Empty, ModeBadge, SideBadge, Stat, fmtDateTime, fmtPct, fmtPrice, fmtSigned, pnlClass } from "@/components/bits";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ export default function History() {
 
   async function downloadCsv() {
     await run("Export failed", async () => {
-      const res = await fetch(tradesCsvUrl(), { headers: { "x-app-password": getPassword() } });
+      const res = await fetch(tradesCsvUrl(), { headers: authHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const url = URL.createObjectURL(await res.blob());
       const a = document.createElement("a");

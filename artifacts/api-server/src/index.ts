@@ -2,7 +2,8 @@ import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { setupWebSocket } from "./bot/websocket";
-import { engine } from "./bot/engine";
+import { resumeEngines } from "./bot/engine";
+import { listUsers } from "./auth";
 
 const rawPort = process.env["PORT"];
 
@@ -22,7 +23,8 @@ const server = createServer(app);
 
 setupWebSocket(server);
 
-engine.start();
+// Resume paper bots that were running before a restart.
+resumeEngines(listUsers().map((u) => u.id));
 
 server.listen(port, (err?: Error) => {
   if (err) {

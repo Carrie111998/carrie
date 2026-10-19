@@ -1,11 +1,9 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Activity, Brain, History, LayoutDashboard, Lock, Radar, Settings, Wifi, WifiOff } from "lucide-react";
+import { Activity, Brain, History, LayoutDashboard, LogOut, Radar, Settings, UserRound, Wifi, WifiOff } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
-import { setPassword } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/useAuth";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -34,34 +32,9 @@ function StatusPill() {
   );
 }
 
-function PasswordGate() {
-  const { retryAuth } = useBot();
-  const [pw, setPw] = useState("");
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <form
-        className="w-full max-w-sm space-y-4 rounded-lg border border-card-border bg-card p-6"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setPassword(pw);
-          retryAuth();
-        }}
-      >
-        <div className="flex items-center gap-2 text-foreground">
-          <Lock className="h-5 w-5 text-primary" />
-          <h1 className="font-semibold">Enter app password</h1>
-        </div>
-        <Input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="APP_PASSWORD" />
-        <Button type="submit" className="w-full">Unlock</Button>
-      </form>
-    </div>
-  );
-}
-
 export default function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
-  const { needsPassword } = useBot();
-  if (needsPassword) return <PasswordGate />;
+  const { user, signOut } = useAuth();
 
   const isActive = (href: string) => (href === "/" ? location === "/" : location.startsWith(href));
 
@@ -94,7 +67,21 @@ export default function Layout({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="px-4 py-3 border-t border-border text-[11px] text-muted-foreground">Not financial advice. Trade at your own risk.</div>
+        <div className="px-3 py-3 border-t border-border">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <UserRound className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm truncate">{user?.username}</div>
+                <div className="text-[10px] text-muted-foreground truncate">{user?.email}</div>
+              </div>
+            </div>
+            <button onClick={signOut} className="text-muted-foreground hover:text-foreground p-1" aria-label="Log out" title="Log out">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="mt-2 text-[10px] text-muted-foreground">Not financial advice. Trade at your own risk.</div>
+        </div>
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -104,7 +91,12 @@ export default function Layout({ children }: { children: ReactNode }) {
             <Activity className="h-4 w-4 text-primary" />
             <span className="text-sm font-bold">Binance Predict Bot</span>
           </div>
-          <StatusPill />
+          <div className="flex items-center gap-3">
+            <StatusPill />
+            <button onClick={signOut} className="text-muted-foreground" aria-label={`Log out ${user?.username ?? ""}`}>
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </header>
 
         <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>

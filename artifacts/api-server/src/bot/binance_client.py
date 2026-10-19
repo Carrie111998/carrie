@@ -192,7 +192,9 @@ class SpotTrader:
     def market_buy(self, symbol: str, quote_amount: float) -> dict:
         f = self.load_filters(symbol)
         if quote_amount < f["minNotional"]:
-            raise BinanceError(f"Order {quote_amount} below min notional {f['minNotional']} for {symbol}")
+            raise BinanceError(
+                f"live order size {quote_amount:g} USDT is below Binance's minimum of {f['minNotional']:g} USDT for {symbol} "
+                f"— raise 'Live order size' in Settings")
         r = self._signed("POST", "/api/v3/order", {
             "symbol": symbol, "side": "BUY", "type": "MARKET",
             "quoteOrderQty": f"{quote_amount:.2f}", "newOrderRespType": "FULL",

@@ -61,7 +61,9 @@ DEFAULT_SETTINGS = {
     "predictionHorizon": 3,
     "minConfidence": 62,
     "maxOpenPositions": 5,
-    "paperStartBalance": 10000.0,
+    "paperStartBalance": 100.0,
+    "paperTradeMode": "fixed",      # "fixed" USDT per trade or "percent" of balance
+    "paperTradeAmountUsdt": 1.0,    # minimum / default bet is 1 USD
     "paperTradeSizePct": 5.0,
     "allowShort": True,
     "slAtrMult": 1.5,
@@ -84,7 +86,7 @@ DEFAULT_SETTINGS = {
     "tuneFilters": True,
     "blockedSymbols": [],
     "blockedHours": [],
-    "liveTradeAmountUsdt": 20.0,
+    "liveTradeAmountUsdt": 5.0,
     "liveMaxOpenPositions": 3,
     "liveDailyLossLimitUsdt": 50.0,
 }
@@ -187,6 +189,9 @@ class Bot:
         return [p for p in self.data["positions"] if mode is None or p["mode"] == mode]
 
     def add_error(self, msg: str):
+        if self.errors and self.errors[0]["message"] == msg:
+            self.errors[0]["time"] = now_ms()  # same error again — don't spam the log
+            return
         self.errors.insert(0, {"time": now_ms(), "message": msg})
         del self.errors[20:]
         log(msg, "error")
@@ -304,8 +309,12 @@ class Bot:
     def open_paper(self, sig):
         s = self.settings
         bal = self.data["paper"]["balance"]
-        quote = round(bal * s["paperTradeSizePct"] / 100, 2)
-        if quote < 10 or quote > bal:
+        if s.get("paperTradeMode") == "percent":
+            quote = round(bal * s["paperTradeSizePct"] / 100, 2)
+        else:
+            quote = float(s.get("paperTradeAmountUsdt", 1.0))
+        quote = max(1.0, quote)  # minimum bet is 1 USD
+        if quote > bal:
             return
         fee = quote * s["feePct"] / 100
         self.data["paper"]["balance"] = bal - quote
