@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Brain, Clock, Coins, Eye, EyeOff, KeyRound, Link2, QrCode, Save, ShieldAlert, Trash2 } from "lucide-react";
+import { Brain, Clock, Coins, Eye, EyeOff, Link2, Save, ShieldAlert, Trash2 } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
 import { api, type BotSettings, type CredentialInfo, type LiveAccount } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,6 @@ const COINS = [
   { symbol: "ETHUSDT", name: "Ethereum", short: "ETH" },
   { symbol: "BNBUSDT", name: "BNB", short: "BNB" },
 ];
-const SLOTS: { v: BotSettings["interval"]; label: string }[] = [{ v: "5m", label: "5 min" }];
 const RUN_TIMES: { v: number; label: string }[] = [
   { v: 15, label: "15 min" }, { v: 30, label: "30 min" }, { v: 60, label: "1 hr" }, { v: 180, label: "3 hrs" },
   { v: 360, label: "6 hrs" }, { v: 720, label: "12 hrs" }, { v: 0, label: "∞ No limit" },
@@ -120,33 +119,31 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: stri
   );
 }
 
-/** Binance API key form. `prediction`: the key is used for Prediction bets (live account only, no testnet). */
-function ApiKeys({ prediction = false }: { prediction?: boolean }) {
-  const { run, state } = useBot();
+/** Binance API key form — the key places Prediction bets (a live key, never testnet). */
+function ApiKeys() {
+  const { run } = useBot();
   const { toast } = useToast();
   const [info, setInfo] = useState<CredentialInfo | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
-  const [testnet, setTestnet] = useState(true);
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
-  const acct = state?.status?.liveAccount;
 
   useEffect(() => {
-    api<CredentialInfo>("/credentials").then((i) => { setInfo(i); setTestnet(i.testnet); }).catch(() => {});
+    api<CredentialInfo>("/credentials").then(setInfo).catch(() => {});
   }, []);
 
   const report = (r: LiveAccount) =>
     toast(
       r.ok
-        ? { title: "Connected to Binance", description: `${r.testnet ? "Testnet" : "Live"} account · ${fmtUsd(r.usdt)} USDT free` }
+        ? { title: "Connected to Binance Prediction", description: `${fmtUsd(r.usdt)} USDT available` }
         : { title: "Binance check failed", description: r.error, variant: "destructive" },
     );
 
   async function save() {
     setBusy(true);
     await run("Could not save API keys", async () => {
-      report(await api<LiveAccount>("/credentials", { method: "POST", body: { apiKey, apiSecret, testnet: prediction ? false : testnet } }));
+      report(await api<LiveAccount>("/credentials", { method: "POST", body: { apiKey, apiSecret, testnet: false } }));
       setInfo(await api<CredentialInfo>("/credentials"));
       setApiKey("");
       setApiSecret("");
@@ -161,12 +158,11 @@ function ApiKeys({ prediction = false }: { prediction?: boolean }) {
           <div>
             Status:{" "}
             {info?.hasCredentials ? (
-              <b className="text-emerald-700">key {info.keyPreview} saved{prediction ? "" : ` (${info.testnet ? "testnet" : "LIVE"})`}</b>
+              <b className="text-emerald-700">key {info.keyPreview} saved</b>
             ) : (
               <b className="text-muted-foreground">no key saved</b>
             )}
           </div>
-          {acct && !prediction && <div>Last check: {acct.ok ? `OK · ${fmtUsd(acct.usdt)} USDT free${acct.canTrade ? "" : " · trading NOT permitted"}` : acct.error}</div>}
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="API key">
@@ -188,12 +184,6 @@ function ApiKeys({ prediction = false }: { prediction?: boolean }) {
             </div>
           </Field>
         </div>
-        {!prediction && <Toggle
-          label="Use Binance Spot Testnet"
-          hint="Recommended first. Create free testnet keys at testnet.binance.vision. Turn off only for real-money trading."
-          checked={testnet}
-          onChange={setTestnet}
-        />}
         <div className="flex flex-wrap gap-2">
           <Button onClick={save} disabled={busy || !apiKey || !apiSecret}>
             <Save className="h-4 w-4 mr-1.5" /> Save & test keys
@@ -220,9 +210,7 @@ function ApiKeys({ prediction = false }: { prediction?: boolean }) {
         </div>
         <p className="text-[11px] text-muted-foreground flex gap-1.5">
           <ShieldAlert className="h-3.5 w-3.5 flex-shrink-0 text-amber-700" />
-          {prediction
-            ? 'Use a live (not testnet) key with "Prediction Trading" ticked — never enable withdrawals — and restrict it to this server\'s IP.'
-            : 'Create keys with only "Enable Spot & Margin Trading" — never enable withdrawals — and restrict them to your server\'s IP.'}{" "}
+          Use a live (not testnet) key with "Prediction Trading" ticked — never enable withdrawals — and restrict it to this server's IP.{" "}
           Keys are stored on the server only and are never sent back to the browser.
         </p>
       </div>
@@ -247,12 +235,12 @@ function PredictionApiKey({ funding, onFunding }: { funding: "MPC" | "CEX"; onFu
           <li>In <b>API Management</b>, tick <b>Prediction Trading</b> on your API key (no withdrawals), and allow this server's IP.</li>
         </ol>
       </div>
-      <ApiKeys prediction />
+      <ApiKeys />
       <Field label="Pay bets from">
         <Choice
           options={[
             { v: "MPC" as const, label: "Prediction wallet", sub: "USDT in your Prediction account" },
-            { v: "CEX" as const, label: "Binance Spot", sub: "USDT in your Spot account" },
+            { v: "CEX" as const, label: "Main Binance wallet", sub: "USDT in your Spot wallet pays the bet" },
           ]}
           value={funding}
           onChange={onFunding}
@@ -366,23 +354,7 @@ export default function Settings() {
       </Panel>
 
       <Panel title="Practice (paper) trading">
-        <p className="mb-4 text-xs text-muted-foreground">Pretend bets with no real money — the safe way to see how the bot performs. Every result also teaches the shared brain.</p>
-        <div className="mb-4 grid gap-2 sm:grid-cols-2">
-          {([
-            ["prediction", "Prediction bets", "A pretend Up/Down bet on every slot, paid like Binance Prediction."],
-            ["spot", "Spot trades", "Pretend buy/sell positions with stop-loss and take-profit."],
-          ] as const).map(([v, title, hint]) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => set("paperMode", v)}
-              className={`rounded-xl border p-3 text-left ${draft.paperMode === v ? "border-primary bg-primary/10" : "border-border bg-card"}`}
-            >
-              <div className="text-sm font-semibold">{title}</div>
-              <div className="text-[11px] text-muted-foreground">{hint}</div>
-            </button>
-          ))}
-        </div>
+        <p className="mb-4 text-xs text-muted-foreground">Pretend Up/Down bets with no real money, paid exactly like Binance Prediction — the safe way to see how the bot performs. Every result also teaches the shared brain.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Bet per round (USD)" hint="Same amount every round — never raised after a loss. Minimum $1.">
             <AmountInput value={n("paperTradeAmountUsdt")} onChange={(v) => set("paperTradeAmountUsdt", v)} />
@@ -393,31 +365,8 @@ export default function Settings() {
         </div>
       </Panel>
 
-      <Panel title={<span className="flex items-center gap-2"><Link2 className="h-4 w-4 text-primary" /> Real-money trading: connect Binance</span>}>
-        <div role="tablist" className="mb-4 grid grid-cols-2 gap-2">
-          {([
-            ["prediction", QrCode, "Prediction Market", "Scan a QR code with the Binance app"],
-            ["spot", KeyRound, "Spot (API key)", "Buy/sell coins with an API key"],
-          ] as const).map(([v, Icon, title, hint]) => (
-            <button
-              key={v}
-              role="tab"
-              type="button"
-              aria-selected={draft.liveVenue === v}
-              onClick={() => {
-                if (draft.liveVenue === v) return;
-                setDraft({ ...draft, liveVenue: v });
-                saveSettings({ liveVenue: v });
-              }}
-              className={`rounded-xl border p-3 text-left ${draft.liveVenue === v ? "border-primary bg-primary/10" : "border-border bg-card"}`}
-            >
-              <div className="flex items-center gap-2 text-sm font-semibold"><Icon className="h-4 w-4" /> {title}</div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>
-            </button>
-          ))}
-        </div>
-        {draft.liveVenue === "prediction" ? (
-          <div className="space-y-4">
+      <Panel title={<span className="flex items-center gap-2"><Link2 className="h-4 w-4 text-primary" /> Real-money betting: connect Binance Prediction</span>}>
+        <div className="space-y-4">
             <Field label="Connect Prediction with" hint="Both place the same bets on Binance Prediction. Changing it switches real betting off until you switch it on again.">
               <Choice
                 options={[
@@ -442,18 +391,14 @@ export default function Settings() {
             ) : (
               <PredictionWallet />
             )}
-          </div>
-        ) : (
-          <ApiKeys />
-        )}
+        </div>
       </Panel>
 
-      {draft.liveVenue === "prediction" ? (
-        <Panel title="Real-money bet limits">
+      <Panel title="Real-money bet limits">
           <div className="space-y-5">
-            <p className="text-xs text-muted-foreground">Live bets go on {coinNames} — {SLOTS.find((x) => x.v === draft.interval)?.label} slot markets.</p>
+            <p className="text-xs text-muted-foreground">Real bets go on Binance Prediction's 5-minute Up or Down rounds for {coinNames}.</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Bet per slot (USDT)" hint="Same size every slot — never increased after a loss. Minimum 1 USDT.">
+              <Field label="Bet per round (USDT)" hint="Same size every round — never increased after a loss. Minimum 1 USDT.">
                 <AmountInput value={n("predictionBetUsdt")} onChange={(v) => set("predictionBetUsdt", v)} />
               </Field>
               <Field label="Daily loss limit (USDT)" hint="Real betting switches off for the day when you lose this much.">
@@ -477,21 +422,7 @@ export default function Settings() {
               <MarketFinder />
             </div>
           </div>
-        </Panel>
-      ) : (
-        <Panel title="Real-money trade limits">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field
-              label="Order size (USD)"
-              hint={n("liveTradeAmountUsdt") < 5 ? "⚠ Binance rejects orders under ~5 USDT." : "Binance needs at least ~5 USDT per order."}
-            >
-              <AmountInput value={n("liveTradeAmountUsdt")} onChange={(v) => set("liveTradeAmountUsdt", v)} />
-            </Field>
-            <Field label="Max open positions"><Num value={n("liveMaxOpenPositions")} onChange={(v) => set("liveMaxOpenPositions", v)} /></Field>
-            <Field label="Daily loss limit (USDT)" hint="Real trading switches off when hit."><Num value={n("liveDailyLossLimitUsdt")} onChange={(v) => set("liveDailyLossLimitUsdt", v)} /></Field>
-          </div>
-        </Panel>
-      )}
+      </Panel>
 
       {admin && (
         <div className="space-y-5 rounded-2xl border-2 border-dashed border-primary/40 p-3 sm:p-4">
@@ -511,7 +442,7 @@ export default function Settings() {
               <Field label="Minimum ADX (trend filter)" hint="0 = off."><Num value={n("minAdx")} onChange={(v) => set("minAdx", v)} min={0} max={60} /></Field>
               <Field label="Scan every (seconds)"><Num value={n("scanIntervalSec")} onChange={(v) => set("scanIntervalSec", v)} min={10} /></Field>
               <Field label="Prediction horizon (candles)"><Num value={n("predictionHorizon")} onChange={(v) => set("predictionHorizon", v)} min={1} /></Field>
-              <Field label="Max bets / positions per round"><Num value={n("maxOpenPositions")} onChange={(v) => set("maxOpenPositions", v)} /></Field>
+              <Field label="Max bets per round"><Num value={n("maxOpenPositions")} onChange={(v) => set("maxOpenPositions", v)} /></Field>
               <Field label="Minimum payout (×)" hint="Bet only when a win pays at least this × the stake (1.65 = $1 returns $1.65). Same rule for practice and real bets; checked all through the slot.">
                 <Num value={n("minPayout")} onChange={(v) => set("minPayout", v)} step={0.05} min={1.05} max={10} />
               </Field>
@@ -519,11 +450,8 @@ export default function Settings() {
                 <Num value={Math.round(n("minEdge") * 100)} onChange={(v) => set("minEdge", v / 100)} step={1} min={0} max={50} />
               </Field>
               <Field label="Fee %"><Num value={n("feePct")} onChange={(v) => set("feePct", v)} step={0.01} /></Field>
-              <Field label="Stop-loss (× ATR, spot)"><Num value={n("slAtrMult")} onChange={(v) => set("slAtrMult", v)} step={0.1} /></Field>
-              <Field label="Take-profit (× ATR, spot)"><Num value={n("tpAtrMult")} onChange={(v) => set("tpAtrMult", v)} step={0.1} /></Field>
-              <Field label="Max hold (candles, spot)"><Num value={n("maxHoldCandles")} onChange={(v) => set("maxHoldCandles", v)} /></Field>
             </div>
-            <div className="mt-3"><Toggle label="Allow Down bets / short trades" hint="Keep on: the bot then bets Down whenever its indicators point down. Auto-tune never switches this off." checked={draft.allowShort} onChange={(v) => set("allowShort", v)} /></div>
+            <div className="mt-3"><Toggle label="Allow Down bets" hint="Keep on: the bot then bets Down whenever its indicators point down. Auto-tune never switches this off." checked={draft.allowShort} onChange={(v) => set("allowShort", v)} /></div>
           </Panel>
 
           <Panel title="Auto-tune (learns from all users)">

@@ -130,6 +130,7 @@ def merge_settings(base: dict, patch: dict) -> dict:
                     out[k][ik] = iv
         else:
             out[k] = v
+    out["liveVenue"] = out["paperMode"] = "prediction"  # Binance Prediction only (Spot trading removed in v3.4.0)
     return out
 
 
@@ -517,23 +518,12 @@ class Bot:
         emit("trade_closed", trade)
 
     def open_new_positions(self, candidates: List[dict]):
-        s = self.settings
-        prediction_paper = s.get("paperMode") == "prediction"
-        for sig in sorted(candidates, key=lambda x: -x["confidence"]):
+        """Explain each signal's betting status (the bets themselves are placed by run_slot_bets).
+        Binance Prediction only — Spot positions are no longer opened (v3.4.0); any left from before still
+        run to their stop-loss / take-profit."""
+        for sig in candidates:
             slots = self.data["slots"].get(sig["symbol"]) or []
-            if prediction_paper:
-                sig["reasons"] = self.bet_blockers(sig, slots[-1]) if slots else ["waiting for the first slot"]
-            else:
-                sig["reasons"] = self.entry_blockers(sig, "paper")
-            if not prediction_paper and not sig["reasons"] and len(self.positions("paper")) < s["maxOpenPositions"]:
-                self.open_paper(sig)
-            if self.live_enabled and self.trader and self.settings.get("liveVenue") == "spot":
-                if not self.entry_blockers(sig, "live") and len(self.positions("live")) < s["liveMaxOpenPositions"]:
-                    if self.live_loss_today() >= s["liveDailyLossLimitUsdt"]:
-                        self.add_error("Daily live loss limit reached — live trading switched off")
-                        self.live_enabled = False
-                        continue
-                    self.open_live(sig)
+            sig["reasons"] = self.bet_blockers(sig, slots[-1]) if slots else ["waiting for the first slot"]
 
     def _new_position(self, sig, mode, qty, entry, quote, fee, order_id=None):
         side = 1 if sig["direction"] == "long" else -1

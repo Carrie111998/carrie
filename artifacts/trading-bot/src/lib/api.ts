@@ -89,8 +89,10 @@ export interface Position {
   confidence: number;
   unrealizedPnl: number;
   kind: "position" | "prediction";
+  slotStart?: number;
   slotEnd: number | null;
   unrealizedPct: number;
+  payout?: number;
 }
 
 export interface Trade {

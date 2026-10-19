@@ -2,6 +2,12 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.4.0 — 2026-10-19
+
+- **Binance Prediction only**: Spot trading is removed — no Spot option for practice or real money, no Spot key setup, no Spot settings. Everyone is moved to Prediction; Spot positions left from before still close at their stop-loss / take-profit.
+- **Open bets, live**: every open bet (LIVE, TEST and PAPER) shows the coin's live price against the price to beat, whether it is **winning or losing right now** and by how much (+ what a win pays, or − the stake), and a countdown bar to the end of the round. Prices stream to the app about once a second for every coin.
+- **Signals → "Active bets · live"**: the same live view of all active bets at the top of the Signals page.
+
 ## v3.3.5 — 2026-10-19
 
 Full feature test (offline: simulated prices + a fake Binance Prediction API following the official docs) and fixes:

@@ -3,8 +3,9 @@ import { ChevronDown } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Empty, Meter, SideBadge, VoteBar, fmtPrice, fmtTime } from "@/components/bits";
+import { Empty, Meter, Panel, SideBadge, VoteBar, fmtPrice, fmtTime } from "@/components/bits";
 import LiveMarket from "@/components/LiveMarket";
+import { ActiveBets } from "@/components/ActiveBets";
 
 function SignalCard({ s, labels, weights, minConfidence }: { s: Signal; labels: Record<string, string>; weights: Record<string, number>; minConfidence: number }) {
   const [open, setOpen] = useState(false);
@@ -45,7 +46,7 @@ function SignalCard({ s, labels, weights, minConfidence }: { s: Signal; labels: 
           <span>{fmtTime(s.time)}</span>
         </div>
         <div className={cn("mt-2 text-xs", tradable ? "text-primary" : "text-muted-foreground")}>
-          {tradable ? "✓ Passes all filters — trade signal" : `Not traded: ${s.reasons.join(", ")}`}
+          {tradable ? "✓ Passes all filters — the bot bets when the payout is good" : `No bet: ${s.reasons.join(", ")}`}
         </div>
       </button>
       {open && (
@@ -81,6 +82,9 @@ export default function Signals() {
           combined by their learned weights into one prediction. Tap a card to see every vote.
         </p>
       </div>
+      <Panel title="Active bets · live">
+        <ActiveBets empty="No active bets — they appear here the moment the bot places one." />
+      </Panel>
       <LiveMarket />
       {signals.length === 0 ? (
         <Empty>No signals yet — start the bot to scan the market.</Empty>

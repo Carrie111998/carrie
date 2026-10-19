@@ -9,6 +9,8 @@ interface BotContext {
   wsConnected: boolean;
   saveSettings: (patch: Partial<BotSettings>) => Promise<void>;
   run: (label: string, fn: () => Promise<unknown>) => Promise<boolean>;
+  /** Latest live price of every coin (about once a second). */
+  prices: Record<string, Tick>;
   /** Stream live Binance trades for one symbol; returns an unsubscribe function. */
   watchTicks: (symbol: string, fn: (t: Tick) => void) => () => void;
 }
@@ -20,6 +22,7 @@ export function BotProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<BotState | null>(null);
   const [settings, setSettings] = useState<BotSettings | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
+  const [prices, setPrices] = useState<Record<string, Tick>>({});
   const { signOut } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);
   const tickWatch = useRef<{ symbol: string; fn: (t: Tick) => void } | null>(null);
@@ -72,7 +75,10 @@ export function BotProvider({ children }: { children: ReactNode }) {
         try {
           const msg = JSON.parse(e.data) as { type: string; data: unknown };
           if (msg.type === "state") setState(msg.data as BotState);
-          else if (msg.type === "tick") {
+          else if (msg.type === "price") {
+            const t = msg.data as Tick;
+            setPrices((p) => ({ ...p, [t.symbol]: t }));
+          } else if (msg.type === "tick") {
             const t = msg.data as Tick;
             if (tickWatch.current?.symbol === t.symbol) tickWatch.current.fn(t);
           }
@@ -122,7 +128,7 @@ export function BotProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider
-      value={{ state, settings, wsConnected, saveSettings, run, watchTicks }}
+      value={{ state, settings, wsConnected, prices, saveSettings, run, watchTicks }}
     >
       {children}
     </Ctx.Provider>

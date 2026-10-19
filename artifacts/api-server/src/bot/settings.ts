@@ -202,12 +202,13 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
     if (typeof p[key] === "boolean") n[key] = p[key];
   }
   if (p.paperTradeMode === "fixed" || p.paperTradeMode === "percent") next.paperTradeMode = p.paperTradeMode;
-  if (p.liveVenue === "prediction" || p.liveVenue === "spot") next.liveVenue = p.liveVenue;
   if (p.predictionAuth === "wallet" || p.predictionAuth === "apikey") next.predictionAuth = p.predictionAuth;
   if (p.predictionFunding === "MPC" || p.predictionFunding === "CEX") next.predictionFunding = p.predictionFunding;
-  if (p.paperMode === "prediction" || p.paperMode === "spot") next.paperMode = p.paperMode;
   // Fixed bet size only: never scale bets with balance or after losses.
   next.paperTradeMode = "fixed";
+  // v3.4.0: Binance Prediction only — Spot trading (practice and real) was removed
+  next.liveVenue = "prediction";
+  next.paperMode = "prediction";
   if (typeof p.predictionSymbol === "string" && SYMBOL_RE.test(p.predictionSymbol.trim().toUpperCase())) {
     next.predictionSymbol = p.predictionSymbol.trim().toUpperCase();
   }

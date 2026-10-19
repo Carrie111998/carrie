@@ -4,7 +4,8 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "rec
 import { AlertTriangle, Play, Square, X, Zap } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
 import { useAuth } from "@/hooks/useAuth";
-import { api, type Position, type PredictionBet } from "@/lib/api";
+import { api, type Position } from "@/lib/api";
+import { ActiveBetRow, useActiveBets } from "@/components/ActiveBets";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -16,10 +17,9 @@ import {
   Empty, Gauge, Meter, ModeBadge, Panel, SideBadge, Stat, fmtDateTime, fmtPct, fmtPrice, fmtSigned, fmtTime, fmtUsd, pnlClass,
 } from "@/components/bits";
 
-function LiveConfirm({ open, onOpenChange, testnet, amount }: { open: boolean; onOpenChange: (v: boolean) => void; testnet: boolean; amount: number }) {
+function LiveConfirm({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { run, settings } = useBot();
-  const prediction = settings?.liveVenue === "prediction";
-  const dryRun = prediction && settings?.predictionDryRun;
+  const dryRun = settings?.predictionDryRun;
   const [typed, setTyped] = useState("");
   return (
     <AlertDialog open={open} onOpenChange={(v) => { onOpenChange(v); setTyped(""); }}>
@@ -27,13 +27,10 @@ function LiveConfirm({ open, onOpenChange, testnet, amount }: { open: boolean; o
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-700" />
-            {prediction
-              ? `Start ${dryRun ? "DRY-RUN" : "REAL-MONEY"} prediction betting?`
-              : `Start ${testnet ? "TESTNET" : "REAL-MONEY"} auto trading?`}
+            {`Start ${dryRun ? "TEST-MODE" : "REAL-MONEY"} Binance Prediction betting?`}
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2 text-sm">
-              {prediction ? (
                 <p>
                   On Binance's 5-minute Up or Down rounds for{" "}
                   <b>{settings?.symbols.map((x) => x.replace("USDT", "")).join(", ")}</b> the bot will{" "}
@@ -41,13 +38,7 @@ function LiveConfirm({ open, onOpenChange, testnet, amount }: { open: boolean; o
                   moment of a round when its confidence is at least <b>{settings?.minConfidence}%</b>, a win pays at least{" "}
                   <b>{settings?.minPayout}×</b> and its win chance beats the price. At most one bet per coin per round.
                 </p>
-              ) : (
-                <p>
-                  The bot will place real Binance Spot market orders of <b>{fmtUsd(amount)}</b> for every long signal that passes your
-                  filters, and sell when the stop-loss, take-profit or time limit is hit.
-                </p>
-              )}
-              {((prediction && !dryRun) || (!prediction && !testnet)) && (
+              {!dryRun && (
                 <p className="text-amber-700">This uses real funds. Prediction bets can go to zero and past accuracy does not guarantee profit — only use money you can afford to lose.</p>
               )}
               <p>Type <b>START</b> to confirm.</p>
@@ -62,39 +53,11 @@ function LiveConfirm({ open, onOpenChange, testnet, amount }: { open: boolean; o
             className="bg-amber-500 text-black hover:bg-amber-400"
             onClick={() => run("Could not start live trading", () => api("/bot/live", { method: "POST", body: { enabled: true, confirm: true } }))}
           >
-            Start live trading
+            Start live betting
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  );
-}
-
-/** A real (or test-mode) bet on Binance Prediction that has not been settled yet. */
-function LiveBetRow({ b }: { b: PredictionBet }) {
-  const up = b.direction === "long";
-  const win = b.shares != null ? b.shares - b.amount : null;
-  return (
-    <div className="flex items-center justify-between gap-2 py-2.5 border-b border-border last:border-0">
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="font-mono text-sm font-semibold">{b.symbol}</span>
-          <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${up ? "border-emerald-500/30 text-emerald-700" : "border-red-500/30 text-red-700"}`}>
-            {up ? "UP" : "DOWN"}
-          </span>
-          <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${b.status === "placed" ? "bg-amber-500/15 text-amber-800" : "bg-secondary text-muted-foreground"}`}>
-            {b.status === "placed" ? "LIVE" : "TEST"}
-          </span>
-        </div>
-        <div className="text-xs text-muted-foreground mt-0.5 font-mono break-words">
-          bet {fmtUsd(b.amount)}{b.payout ? ` · ${b.payout.toFixed(2)}× payout` : ""} · {b.marketTitle ?? "Binance Prediction"} · ends {fmtTime(b.slotEnd)}
-        </div>
-      </div>
-      <div className="text-right flex-shrink-0">
-        <div className="text-sm font-mono font-semibold text-emerald-700">{win != null ? `+${fmtUsd(win)}` : "—"}</div>
-        <div className="text-xs text-muted-foreground">if it wins</div>
-      </div>
-    </div>
   );
 }
 
@@ -159,10 +122,9 @@ function RunTimer({ stopAt }: { stopAt: number | null }) {
 
 export default function Dashboard() {
   const { state, settings, run } = useBot();
-  // real (and test-mode) Binance Prediction bets still waiting for their round to settle
-  const openBets = (state?.prediction?.bets ?? []).filter(
-    (b) => (b.status === "placed" || b.status === "dry_run") && b.result == null && b.slotEnd > Date.now() - 10 * 60_000,
-  );
+  const activeBets = useActiveBets();
+  // Spot positions are no longer opened; any left from before are still listed until they close
+  const spotPositions = (state?.positions ?? []).filter((p) => p.kind !== "prediction");
   const { user } = useAuth();
   const [confirmLive, setConfirmLive] = useState(false);
   const st = state?.status;
@@ -202,7 +164,7 @@ export default function Dashboard() {
           )}
           <label className="flex items-center gap-2 rounded-md border border-amber-500/40 px-3 py-2">
             <Zap className="h-4 w-4 text-amber-700" />
-            <span className="text-sm">Live trading</span>
+            <span className="text-sm">Live betting</span>
             <Switch
               checked={st?.liveEnabled ?? false}
               disabled={!st?.hasCredentials}
@@ -216,7 +178,7 @@ export default function Dashboard() {
 
       {!st?.hasCredentials && (
         <div className="rounded-md border border-border bg-card px-4 py-2 text-xs text-muted-foreground">
-          Paper trading needs no account. To trade live, connect your Binance Agentic Wallet (Prediction Market) or add Spot API keys in{" "}
+          Practice bets need no account. To bet with real money, connect Binance Prediction (QR code or your API key) in{" "}
           <Link href="/settings" className="text-primary underline">Settings</Link>.
         </div>
       )}
@@ -294,7 +256,7 @@ export default function Dashboard() {
           {st?.hasCredentials && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Stat
-                label={st.venue === "prediction" ? "Prediction balance" : st.liveAccount?.testnet ? "Testnet USDT" : "Binance USDT"}
+                label="Prediction balance"
                 value={st.liveAccount?.ok ? fmtUsd(st.liveAccount.usdt) : "—"}
                 sub={st.liveAccount?.ok === false ? "check failed" : st.liveEnabled ? "live ON" : "live off"}
                 valueClass="text-amber-700"
@@ -334,14 +296,14 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title={`Open positions (${(state?.positions?.length ?? 0) + openBets.length})`}>
-          {openBets.length || state?.positions?.length ? (
+        <Panel title={`Open bets (${activeBets.length + spotPositions.length}) · live`}>
+          {activeBets.length || spotPositions.length ? (
             <>
-              {openBets.map((b) => <LiveBetRow key={b.id} b={b} />)}
-              {state?.positions?.map((p) => <PositionRow key={p.id} p={p} />)}
+              {activeBets.map((b) => <ActiveBetRow key={b.id} bet={b} />)}
+              {spotPositions.map((p) => <PositionRow key={p.id} p={p} />)}
             </>
           ) : (
-            <Empty>No open positions.</Empty>
+            <Empty>No open bets right now.</Empty>
           )}
         </Panel>
         <Panel title="Activity" action={<Link href="/history" className="text-xs text-primary">All trades</Link>}>
@@ -369,8 +331,6 @@ export default function Dashboard() {
       <LiveConfirm
         open={confirmLive}
         onOpenChange={setConfirmLive}
-        testnet={st?.liveAccount?.testnet ?? true}
-        amount={settings?.liveTradeAmountUsdt ?? 0}
       />
     </div>
   );

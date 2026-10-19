@@ -4,6 +4,7 @@ import { getEngine } from "./engine";
 import { isAdmin, userFromToken } from "../auth";
 import { logger } from "../lib/logger";
 import { liveStream, SYMBOL_RE } from "../market";
+import { COINS } from "./settings";
 
 export function setupWebSocket(server: Server) {
   const wss = new WebSocketServer({ server, path: "/ws" });
@@ -28,6 +29,17 @@ export function setupWebSocket(server: Server) {
     send("state", engine.publicState());
     send("settings", engine.effectiveSettings());
 
+    // live prices of every coin, about once a second each, so open bets can show winning/losing as it happens
+    const lastPrice = new Map<string, number>();
+    const priceSubs = COINS.map((sym) =>
+      liveStream.subscribe(sym, (t) => {
+        if (t.time - (lastPrice.get(sym) ?? 0) < 1000) return;
+        lastPrice.set(sym, t.time);
+        send("price", t);
+      }),
+    );
+    const stopPrices = () => priceSubs.splice(0).forEach((u) => u());
+
     // live price ticks for the one symbol this browser is charting
     let unwatch: (() => void) | null = null;
     const stopWatching = () => {
@@ -51,10 +63,12 @@ export function setupWebSocket(server: Server) {
     ws.on("close", () => {
       unsubscribe();
       stopWatching();
+      stopPrices();
     });
     ws.on("error", (err) => {
       unsubscribe();
       stopWatching();
+      stopPrices();
       logger.warn({ err }, "WebSocket error");
     });
   });
