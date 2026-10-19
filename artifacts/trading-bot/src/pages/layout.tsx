@@ -80,7 +80,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               <LogOut className="h-4 w-4" />
             </button>
           </div>
-          <div className="mt-2 text-[10px] text-muted-foreground">Not financial advice. Trade at your own risk.</div>
+          <div className="mt-2 text-[10px] text-muted-foreground">v{__APP_VERSION__} · Not financial advice. Trade at your own risk.</div>
         </div>
       </aside>
 

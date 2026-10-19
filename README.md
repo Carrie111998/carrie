@@ -1,4 +1,6 @@
-# Binance Predict Bot
+# Binance Predict Bot — v2.0.0
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed; older versions are archived in [`archive/`](archive/).
 
 A self-learning Binance crypto prediction bot. It paper-trades every signal, studies its losing trades, auto-tunes its own settings, and can optionally place real Binance Spot orders.
 
@@ -44,6 +46,8 @@ The app runs on port **8888** (`docker-compose.yml` also has Traefik labels for 
 - **Bet amount**: choose a fixed USD amount per trade (**standard and minimum is $1**, with quick picks $1/$2/$5/$10/$25/$50) or a % of the paper balance. Live orders have their own size. Binance rejects orders under about 5 USDT on most pairs, so live defaults to $5.
 
 - **18 indicators and prediction tools, plus a self-learning AI model**: RSI, MACD, Bollinger Bands, EMA cross, Stochastic, ADX/DMI, CCI, Williams %R, MFI, OBV, VWAP, Supertrend, Ichimoku, Rate of Change, Linear-regression forecast, Candlestick patterns, Volume spikes, EMA-100 trend, and an online logistic-regression model trained on real outcomes. Votes (-1…+1) are combined by learned weights into one direction and a 0–100 confidence.
+- **Fixed bet size**: every bet is the same amount (default **$1.50**), never raised after a loss. The Dashboard shows the break-even win rate next to the actual one.
+- **Community learning**: all users' settled trades (dummy, paper and live) are pooled anonymously every 10 minutes to tune indicator weights, confidence and filters for everyone; new users start with the learned settings. Can be switched off per user.
 - **Paper trading modes**: *Dummy Binance Prediction* (default) places a pretend Up/Down bet (default $1, at an assumed 0.50 share price) on every slot and settles it when the slot closes, so the loss study and auto-tune learn from prediction-style results. *Dummy Spot* trades pretend long/short positions instead.
 - **Auto paper trading** while the bot runs: ATR-based stop-loss and take-profit, max hold time, fees, long and short.
 - **Binance Prediction Market (default live venue)**: connect your Binance Agentic Wallet in Settings (pairing code confirmed in the Binance App — no API key). At the start of every slot the bot bets the set USDT amount (minimum 1) on Up or Down for the chosen pair, within a max exposure and daily loss limit, and auto-claims winnings. **Dry run** (quotes only) is on by default; **Find markets** shows which market the bot will use. Uses Binance's official `baw` CLI (`@binance/agentic-wallet`); each user's wallet session is stored in `data/users/<id>/baw`.

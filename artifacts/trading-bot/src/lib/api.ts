@@ -47,6 +47,8 @@ export interface BotSettings {
   predictionMaxExposureUsdt: number;
   predictionDryRun: boolean;
   predictionAutoRedeem: boolean;
+  useCommunityLearning: boolean;
+  settingsVersion: number;
 }
 
 export interface Signal {
@@ -171,6 +173,16 @@ export interface Learning {
   calibration: { time: number; samples: number; symbols: number; interval: string } | null;
   lossStudy: LossStudy;
   pendingPredictions: number;
+  community?: {
+    enabled: boolean;
+    users: number;
+    trades: number;
+    winRate?: number | null;
+    updatedAt?: number;
+    byMode?: Record<string, { trades: number; wins: number; pnl: number }>;
+    recommended?: Record<string, unknown>;
+    insights?: string[];
+  };
 }
 
 export interface LiveAccount {

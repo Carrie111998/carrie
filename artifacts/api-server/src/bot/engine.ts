@@ -1,9 +1,9 @@
-import { ChildProcessWithoutNullStreams, spawn } from "child_process";
+import { ChildProcessWithoutNullStreams, execFile, spawn } from "child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
-import { applyPatch, defaultSettings, type BotSettings } from "./settings";
+import { applyPatch, defaultSettings, SETTINGS_VERSION, type BotSettings } from "./settings";
 import { DATA_DIR, workspaceRoot } from "./paths";
 import { BAW_BIN } from "../prediction";
 
@@ -22,6 +22,21 @@ export interface LogEntry {
 }
 
 const BOT_SCRIPT = path.join(workspaceRoot, "artifacts/api-server/src/bot/binance_bot.py");
+const COLLECTIVE_SCRIPT = path.join(workspaceRoot, "artifacts/api-server/src/bot/collective.py");
+export const GLOBAL_DIR = path.join(DATA_DIR, "global");
+
+/** Settings the community's pooled trades recommend (indicator weights, confidence, filters). */
+function communityRecommended(): Partial<BotSettings> {
+  return readJson<{ recommended?: Partial<BotSettings> }>(path.join(GLOBAL_DIR, "collective.json"))?.recommended ?? {};
+}
+
+/** Rebuild the anonymous community dataset from every user's trades. */
+export function runCollective() {
+  execFile(process.env["PYTHON"] ?? "python3", [COLLECTIVE_SCRIPT, DATA_DIR], { timeout: 120_000 }, (err, stdout, stderr) => {
+    if (err) logger.warn({ err: String(err), stderr: stderr?.slice(0, 500) }, "Community learning update failed");
+    else logger.info({ result: stdout.trim().slice(0, 300) }, "Community learning updated");
+  });
+}
 
 function readJson<T>(file: string): T | null {
   try {
@@ -62,7 +77,25 @@ export class Engine {
     this.settingsFile = path.join(dataDir, "settings.json");
     this.credentialsFile = path.join(dataDir, "credentials.json");
     this.runtimeFile = path.join(dataDir, "runtime.json");
-    this.settings = applyPatch(defaultSettings(), readJson(this.settingsFile) ?? {});
+    const saved = readJson<Record<string, unknown>>(this.settingsFile);
+    if (!saved) {
+      // new account: start from what the community's trades have taught the bot so far
+      this.settings = applyPatch(defaultSettings(), communityRecommended());
+    } else {
+      this.settings = applyPatch(defaultSettings(), saved);
+      const version = Number(saved["settingsVersion"] ?? 1);
+      if (version < SETTINGS_VERSION) {
+        // v2 defaults for everyone: fixed 1.50 bets (only replaces the old 1.00 default),
+        // dummy Binance Prediction paper trading, community learning on
+        const upgrade: Partial<BotSettings> = { paperMode: "prediction", useCommunityLearning: true };
+        if (Number(saved["paperTradeAmountUsdt"] ?? 1) <= 1) upgrade.paperTradeAmountUsdt = 1.5;
+        if (Number(saved["predictionBetUsdt"] ?? 1) <= 1) upgrade.predictionBetUsdt = 1.5;
+        this.settings = applyPatch(this.settings, upgrade);
+        logger.info({ userId, from: version, to: SETTINGS_VERSION }, "Upgraded user settings");
+      }
+    }
+    this.settings.settingsVersion = SETTINGS_VERSION;
+    writeJson(this.settingsFile, this.settings);
     this.credentials = readJson<Credentials>(this.credentialsFile);
   }
 
@@ -92,7 +125,7 @@ export class Engine {
     const proc = spawn(process.env["PYTHON"] ?? "python3", [BOT_SCRIPT], {
       stdio: ["pipe", "pipe", "pipe"],
       // each user's Binance Agentic Wallet session lives in their own data folder
-      env: { ...process.env, BAW_BIN, BINANCE_BAW_DIR: path.join(this.dataDir, "baw") },
+      env: { ...process.env, BAW_BIN, BINANCE_BAW_DIR: path.join(this.dataDir, "baw"), BOT_GLOBAL_DIR: GLOBAL_DIR },
     });
     this.proc = proc;
     proc.stdout.on("data", (chunk: Buffer) => {

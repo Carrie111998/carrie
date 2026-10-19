@@ -1,4 +1,4 @@
-import { Brain, FlaskConical, Lightbulb, Wand2 } from "lucide-react";
+import { Brain, FlaskConical, Lightbulb, Users, Wand2 } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
 import { api, type GroupRow } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -81,6 +81,41 @@ export default function Learning() {
           sub={L?.calibration ? `samples · ${fmtDateTime(L.calibration.time)}` : "not run yet"}
         />
       </div>
+
+      <Panel title={<span className="flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Community learning</span>}>
+        {!L?.community?.enabled ? (
+          <Empty>Community learning is off — turn it on in Settings → Auto-tune.</Empty>
+        ) : !L.community.trades ? (
+          <Empty>Collecting… the pooled dataset updates every 10 minutes once users have settled trades.</Empty>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-3">
+              <Stat label="Users" value={L.community.users} />
+              <Stat label="Pooled trades" value={L.community.trades.toLocaleString()} />
+              <Stat label="Community win rate" value={fmtPct(L.community.winRate)} />
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {Object.entries(L.community.byMode ?? {}).map(([k, m]) => (
+                <span key={k} className="rounded bg-secondary px-2 py-1">
+                  {k.replace("-", " · ")}: <b>{m.trades}</b> trades, {fmtPct(m.trades ? (100 * m.wins) / m.trades : null)} won
+                </span>
+              ))}
+            </div>
+            {!!L.community.insights?.length && (
+              <ul className="space-y-1 text-sm">
+                {L.community.insights.map((i) => (
+                  <li key={i} className="flex gap-2"><span className="text-primary">•</span><span>{i}</span></li>
+                ))}
+              </ul>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Settled trades from every user (dummy paper, paper and live) are pooled anonymously — no names, emails or order IDs — to tune
+              indicator weights, confidence and filters for everyone. New accounts start with the community's learned settings.
+              {L.community.updatedAt ? ` Updated ${fmtDateTime(L.community.updatedAt)}.` : ""}
+            </p>
+          </div>
+        )}
+      </Panel>
 
       <Panel title={<span className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-amber-400" /> Loss study</span>}>
         {study ? (

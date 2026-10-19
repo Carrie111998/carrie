@@ -52,7 +52,12 @@ export interface BotSettings {
   predictionMaxExposureUsdt: number;
   predictionDryRun: boolean;
   predictionAutoRedeem: boolean;
+  useCommunityLearning: boolean;
+  /** schema version of this settings file; bumped when defaults change for everyone */
+  settingsVersion: number;
 }
+
+export const SETTINGS_VERSION = 2;
 
 export function defaultSettings(): BotSettings {
   return {
@@ -99,6 +104,8 @@ export function defaultSettings(): BotSettings {
     predictionMaxExposureUsdt: 20,
     predictionDryRun: true,
     predictionAutoRedeem: true,
+    useCommunityLearning: true,
+    settingsVersion: SETTINGS_VERSION,
   };
 }
 
@@ -149,7 +156,7 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
       n[key] = INT_KEYS.has(key) ? Math.round(clamp(v, range)) : clamp(v, range);
     }
   }
-  for (const key of ["allowShort", "autoTune", "tuneWeights", "tuneThreshold", "tuneRisk", "tuneFilters", "predictionDryRun", "predictionAutoRedeem"]) {
+  for (const key of ["allowShort", "autoTune", "tuneWeights", "tuneThreshold", "tuneRisk", "tuneFilters", "predictionDryRun", "predictionAutoRedeem", "useCommunityLearning"]) {
     if (typeof p[key] === "boolean") n[key] = p[key];
   }
   if (p.paperTradeMode === "fixed" || p.paperTradeMode === "percent") next.paperTradeMode = p.paperTradeMode;

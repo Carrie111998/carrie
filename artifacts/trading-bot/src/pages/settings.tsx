@@ -412,6 +412,12 @@ export default function Settings() {
         <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
           <Toggle label="Auto-tune enabled" hint="Learn from results and update settings automatically." checked={draft.autoTune} onChange={(v) => set("autoTune", v)} />
           <Field label="Run after every N closed trades"><Num value={n("autoTuneEvery")} onChange={(v) => set("autoTuneEvery", v)} min={1} /></Field>
+          <Toggle
+            label="Learn from all users (community learning)"
+            hint="Auto-tune and the AI model also use other users' anonymous settled trades — far more data, faster tuning."
+            checked={draft.useCommunityLearning}
+            onChange={(v) => set("useCommunityLearning", v)}
+          />
           <Toggle label="Tune indicator weights" checked={draft.tuneWeights} onChange={(v) => set("tuneWeights", v)} />
           <Toggle label="Tune minimum confidence" checked={draft.tuneThreshold} onChange={(v) => set("tuneThreshold", v)} />
           <Toggle label="Tune stop-loss / take-profit" checked={draft.tuneRisk} onChange={(v) => set("tuneRisk", v)} />

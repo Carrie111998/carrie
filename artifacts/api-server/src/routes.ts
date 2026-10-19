@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { getEngine, type Engine } from "./bot/engine";
+import { APP_VERSION } from "./version";
 import { getKlines, KLINE_INTERVALS, SYMBOL_RE } from "./market";
 import { bawDir, signinState, signout, startSignin, walletStatus } from "./prediction";
 import {
@@ -22,7 +23,7 @@ const userOf = (res: Response) => res.locals["user"] as User;
 const engineOf = (res: Response): Engine => getEngine(userOf(res).id);
 
 router.get("/healthz", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", version: APP_VERSION });
 });
 
 // ─── Auth (public) ───────────────────────────────────────────────────────────

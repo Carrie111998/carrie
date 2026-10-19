@@ -23,7 +23,7 @@ import threading
 import time
 import traceback
 import uuid
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -104,6 +104,8 @@ DEFAULT_SETTINGS = {
     "predictionMaxExposureUsdt": 20.0,
     "predictionDryRun": True,
     "predictionAutoRedeem": True,
+    # learn from every user's settled trades (anonymous pool built by collective.py)
+    "useCommunityLearning": True,
 }
 
 
@@ -141,6 +143,8 @@ class Bot:
         self.market = self.sim if SIMULATE else MarketData()
         self.study_cache: Optional[dict] = None
         self._new_slots: List[tuple] = []
+        self.collective: Optional[dict] = None
+        self.collective_mtime = 0.0
         self.pm: Optional[PredictionClient] = None
         self.pm_status: Optional[str] = None
         self.pm_balance_at = 0.0
@@ -230,7 +234,11 @@ class Bot:
     def analyse(self, c: dict) -> dict:
         votes = compute_votes(c, self.params(), self.enabled)
         if self.enabled(AI_KEY):
-            ai = learner.ai_vote(self.data["learning"], votes)
+            model_src = self.data["learning"]
+            col = self.collective if self.settings.get("useCommunityLearning", True) else None
+            if col and col.get("model", {}).get("samples", 0) > model_src["model"]["samples"]:
+                model_src = {"model": col["model"]}  # community model has seen more outcomes
+            ai = learner.ai_vote(model_src, votes)
             if ai is not None:
                 votes[AI_KEY] = ai
         direction, confidence, score = learner.combine(votes, self.weights())
@@ -703,6 +711,47 @@ class Bot:
 
     # ─── Auto-tune ──────────────────────────────────────────────────────────
 
+    # ─── Community learning (anonymous pool of all users' trades) ────────────
+
+    def collective_path(self) -> Optional[str]:
+        gdir = os.environ.get("BOT_GLOBAL_DIR") or (os.path.join(os.path.dirname(os.path.dirname(self.data_dir)), "global") if self.data_dir else None)
+        return os.path.join(gdir, "collective.json") if gdir else None
+
+    def load_collective(self) -> Optional[dict]:
+        p = self.collective_path()
+        if not p or not self.settings.get("useCommunityLearning", True) or not os.path.exists(p):
+            return None
+        mtime = os.path.getmtime(p)
+        if mtime != self.collective_mtime:
+            try:
+                with open(p) as f:
+                    self.collective = json.load(f)
+                self.collective_mtime = mtime
+            except Exception:
+                return self.collective
+        return self.collective
+
+    def my_tag(self) -> str:
+        import hashlib
+        return hashlib.sha256(os.path.basename(self.data_dir or "").encode()).hexdigest()[:10]
+
+    def community_learning(self) -> Tuple[dict, List[dict]]:
+        """Own learning/trades merged with everybody else's (own trades are never counted twice)."""
+        own_learning = self.data["learning"]
+        own_trades = self.data["trades"]
+        col = self.load_collective()
+        if not col:
+            return own_learning, own_trades
+        me = self.my_tag()
+        others = [dict(t, mode="paper") for t in col.get("trades", []) if t.get("user") != me]
+        merged_ind = {k: dict(v) for k, v in own_learning["indicators"].items()}
+        for k, v in (col.get("indicators") or {}).items():
+            m = merged_ind.setdefault(k, {"hits": 0.0, "total": 0.0, "recent": []})
+            m["hits"] = m.get("hits", 0.0) + v.get("hits", 0.0)
+            m["total"] = m.get("total", 0.0) + v.get("total", 0.0)
+        merged = dict(own_learning, indicators=merged_ind)
+        return merged, own_trades + others
+
     def maybe_autotune(self, force: bool = False):
         s = self.settings
         if not s["autoTune"] and not force:
@@ -711,7 +760,9 @@ class Bot:
         if not force and n_paper - self.data["learning"]["lastTuneTradeCount"] < s["autoTuneEvery"]:
             return
         tune_s = dict(s, tuneRisk=False) if s.get("paperMode") == "prediction" else s  # no SL/TP on slot bets
-        patch, changes = learner.autotune(tune_s, self.data["learning"], self.data["trades"], now_ms())
+        learning, trades = self.community_learning()
+        patch, changes = learner.autotune(tune_s, learning, trades, now_ms())
+        self.data["learning"]["lastTuneTradeCount"] = n_paper  # count only this user's new trades
         if patch:
             self.settings = merge_settings(self.settings, patch)
             emit("settings_tuned", patch)
@@ -861,7 +912,17 @@ class Bot:
             "calibration": L["calibration"],
             "lossStudy": self.study_cache,
             "pendingPredictions": len(self.data["pending"]),
+            "community": self.community_view(),
         }
+
+    def community_view(self) -> Optional[dict]:
+        col = self.load_collective()
+        if not col:
+            return {"enabled": bool(self.settings.get("useCommunityLearning", True)), "users": 0, "trades": 0}
+        sm = col.get("summary", {})
+        return {"enabled": True, "users": col.get("users", 0), "trades": sm.get("trades", 0), "winRate": sm.get("winRate"),
+                "updatedAt": col.get("updatedAt"), "byMode": sm.get("byMode", {}), "recommended": col.get("recommended", {}),
+                "insights": (sm.get("lossStudy") or {}).get("insights", [])[:5]}
 
     def accuracy_score(self, paper: dict, learning: dict) -> Optional[float]:
         """Single 0-100 'how well is the bot doing' meter: blends trade win rate and prediction accuracy."""

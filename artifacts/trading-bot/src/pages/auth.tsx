@@ -32,7 +32,7 @@ function Shell({ title, subtitle, children, onBack }: { title: string; subtitle?
           </div>
           {children}
         </div>
-        <p className="mt-4 text-center text-[11px] text-muted-foreground">Not financial advice. Trade at your own risk.</p>
+        <p className="mt-4 text-center text-[11px] text-muted-foreground">v{__APP_VERSION__} · Not financial advice. Trade at your own risk.</p>
       </div>
     </div>
   );
