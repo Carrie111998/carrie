@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Panel, fmtUsd } from "@/components/bits";
 import { useToast } from "@/hooks/use-toast";
+import { MarketFinder, PredictionWallet } from "@/components/PredictionWallet";
 
 const INTERVALS: BotSettings["interval"][] = ["1m", "3m", "5m", "15m", "30m", "1h", "4h"];
 
@@ -117,7 +118,7 @@ function ApiKeys() {
   }
 
   return (
-    <Panel title={<span className="flex items-center gap-2"><KeyRound className="h-4 w-4 text-amber-400" /> Binance API</span>}>
+    <Panel title={<span className="flex items-center gap-2"><KeyRound className="h-4 w-4 text-amber-400" /> Binance Spot API keys</span>}>
       <div className="space-y-4">
         <div className="rounded-md bg-secondary/60 px-3 py-2 text-xs space-y-1">
           <div>
@@ -237,7 +238,78 @@ export default function Settings() {
         </div>
       </div>
 
-      <ApiKeys />
+      <Panel title="Live trading venue">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {([
+            ["prediction", "Binance Prediction Market", "Bets Up/Down on each slot from your Binance Agentic Wallet (USDT on BSC). No API key."],
+            ["spot", "Binance Spot", "Buys and sells coins on Binance Spot with an API key and secret."],
+          ] as const).map(([v, title, hint]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => set("liveVenue", v)}
+              className={`rounded-md border p-3 text-left ${draft.liveVenue === v ? "border-primary bg-primary/10" : "border-border"}`}
+            >
+              <div className="text-sm font-semibold">{title}</div>
+              <div className="text-[11px] text-muted-foreground">{hint}</div>
+            </button>
+          ))}
+        </div>
+        {dirty && draft.liveVenue !== settings?.liveVenue && (
+          <p className="mt-2 text-xs text-amber-300">Tap Save settings to switch venue.</p>
+        )}
+      </Panel>
+
+      {draft.liveVenue === "prediction" ? (
+        <Panel title="Binance Prediction Market">
+          <div className="space-y-5">
+            <PredictionWallet />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label="Bet on pair" hint="The bot bets on this pair's Up/Down slot market.">
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-mono"
+                  value={draft.predictionSymbol}
+                  onChange={(e) => set("predictionSymbol", e.target.value)}
+                >
+                  {[...new Set([draft.predictionSymbol, ...draft.symbols])].map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Field>
+              <Field label="Bet amount per slot (USDT)" hint="Minimum and standard bet is 1 USDT.">
+                <AmountInput value={n("predictionBetUsdt")} onChange={(v) => set("predictionBetUsdt", v)} />
+              </Field>
+              <Field label="Max open exposure (USDT)" hint="No new bets while unsettled bets add up to this.">
+                <Num value={n("predictionMaxExposureUsdt")} onChange={(v) => set("predictionMaxExposureUsdt", v)} />
+              </Field>
+              <Field label="Daily loss limit (USDT)" hint="Live betting switches off when hit.">
+                <Num value={n("liveDailyLossLimitUsdt")} onChange={(v) => set("liveDailyLossLimitUsdt", v)} />
+              </Field>
+              <Field label="Market search word" hint="Used to find the slot market (e.g. BTC or Bitcoin).">
+                <Input value={draft.predictionQuery} onChange={(e) => set("predictionQuery", e.target.value)} />
+              </Field>
+            </div>
+            <div className="grid gap-x-8 md:grid-cols-2">
+              <Toggle
+                label="Dry run (quotes only, no real bets)"
+                hint="Turn OFF only after Find markets shows the right market and a few dry-run quotes look correct."
+                checked={draft.predictionDryRun}
+                onChange={(v) => set("predictionDryRun", v)}
+              />
+              <Toggle label="Auto-claim winnings" hint="Redeems resolved winning positions every 5 minutes." checked={draft.predictionAutoRedeem} onChange={(v) => set("predictionAutoRedeem", v)} />
+            </div>
+            {draft.interval !== "5m" && (
+              <p className="text-xs text-amber-300">
+                Your candle interval is {draft.interval}. Binance's BTC slot markets are 5 minutes — set the candle interval to 5m below so slots line up.
+              </p>
+            )}
+            <div>
+              <div className="mb-2 text-sm font-medium">Check which market the bot will use</div>
+              <MarketFinder query={draft.predictionQuery} />
+            </div>
+          </div>
+        </Panel>
+      ) : (
+        <ApiKeys />
+      )}
 
       <Panel title="Markets & prediction">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -293,7 +365,7 @@ export default function Settings() {
         </div>
       </Panel>
 
-      <Panel title="Live trading safety">
+      {draft.liveVenue === "spot" && <Panel title="Live trading safety">
         <div className="grid gap-4 sm:grid-cols-3">
           <Field
             label="Live order size (USD)"
@@ -304,7 +376,7 @@ export default function Settings() {
           <Field label="Max open live positions"><Num value={n("liveMaxOpenPositions")} onChange={(v) => set("liveMaxOpenPositions", v)} /></Field>
           <Field label="Daily loss limit (USDT)" hint="Live trading switches off when hit."><Num value={n("liveDailyLossLimitUsdt")} onChange={(v) => set("liveDailyLossLimitUsdt", v)} /></Field>
         </div>
-      </Panel>
+      </Panel>}
 
       <Panel title="Auto-tune">
         <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">

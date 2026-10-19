@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { getEngine, type Engine } from "./bot/engine";
 import { getKlines, KLINE_INTERVALS, SYMBOL_RE } from "./market";
+import { bawDir, signinState, signout, startSignin, walletStatus } from "./prediction";
 import {
   AuthError, bearer, emailEnabled, login, logout, publicUser, requireUser,
   startReset, startSignup, verifyReset, verifySignup, type User,
@@ -142,6 +143,35 @@ router.delete("/credentials", wrap(async (_req, res) => {
 
 router.post("/credentials/test", wrap(async (_req, res) => {
   res.json(await engineOf(res).request({ cmd: "test_credentials" }));
+}));
+
+// ─── Binance Prediction Market (Agentic Wallet) ─────────────────────────────
+
+router.get("/prediction/wallet", wrap(async (_req, res) => {
+  const engine = engineOf(res);
+  res.json({ status: await walletStatus(bawDir(engine.dataDir)), signin: signinState(userOf(res).id) });
+}));
+
+router.post("/prediction/signin", wrap(async (_req, res) => {
+  const engine = engineOf(res);
+  const refresh = () => void engine.request({ cmd: "prediction_refresh" }, 60_000).catch(() => {});
+  res.json(await startSignin(userOf(res).id, bawDir(engine.dataDir), refresh));
+}));
+
+router.post("/prediction/signout", wrap(async (_req, res) => {
+  const engine = engineOf(res);
+  engine.command({ cmd: "live", enabled: false });
+  await signout(userOf(res).id, bawDir(engine.dataDir));
+  res.json({ ok: true });
+}));
+
+router.post("/prediction/refresh", wrap(async (_req, res) => {
+  res.json(await engineOf(res).request({ cmd: "prediction_refresh" }, 60_000));
+}));
+
+router.get("/prediction/markets", wrap(async (req, res) => {
+  const query = String(req.query["query"] ?? "").slice(0, 200);
+  res.json(await engineOf(res).request({ cmd: "prediction_markets", query }, 60_000));
 }));
 
 router.get("/trades", wrap(async (req, res) => {

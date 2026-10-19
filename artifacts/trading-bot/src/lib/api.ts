@@ -38,6 +38,13 @@ export interface BotSettings {
   liveTradeAmountUsdt: number;
   liveMaxOpenPositions: number;
   liveDailyLossLimitUsdt: number;
+  liveVenue: "prediction" | "spot";
+  predictionSymbol: string;
+  predictionQuery: string;
+  predictionBetUsdt: number;
+  predictionMaxExposureUsdt: number;
+  predictionDryRun: boolean;
+  predictionAutoRedeem: boolean;
 }
 
 export interface Signal {
@@ -163,6 +170,8 @@ export interface Learning {
 
 export interface LiveAccount {
   ok: boolean;
+  venue?: "prediction" | "spot";
+  status?: string;
   usdt?: number;
   canTrade?: boolean;
   testnet?: boolean;
@@ -184,6 +193,7 @@ export interface BotState {
     errors: { time: number; message: string }[];
     calibrating: { symbol: string; progress: number } | null;
     hasCredentials: boolean;
+    venue?: "prediction" | "spot";
     liveAccount: LiveAccount | null;
   };
   paper?: Stats & { balance: number; equity: number; startBalance: number; returnPct: number };
@@ -195,6 +205,53 @@ export interface BotState {
   equity?: { t: number; v: number }[];
   recentTrades?: Trade[];
   slots?: SlotsView;
+  prediction?: {
+    venue: "prediction" | "spot";
+    dryRun: boolean;
+    symbol: string;
+    exposure: number;
+    bets: PredictionBet[];
+  };
+}
+
+export interface PredictionBet {
+  id: string;
+  symbol: string;
+  slotStart: number;
+  slotEnd: number;
+  direction: Side | "neutral";
+  confidence: number;
+  amount: number;
+  dryRun: boolean;
+  status: "placed" | "dry_run" | "skipped" | "failed";
+  reason: string | null;
+  createdAt: number;
+  marketTitle: string | null;
+  outcome: string | null;
+  shares: number | null;
+  avgPrice: number | null;
+  orderId: string | null;
+  result: "win" | "loss" | "flat" | null;
+  pnl: number | null;
+}
+
+export interface PredictionMarket {
+  marketTopicId: string;
+  title: string;
+  endTime: number | null;
+  startTime: number | null;
+  outcomes: { tokenId: string; label: string }[];
+}
+
+export interface MarketSearch {
+  ok: boolean;
+  error?: string;
+  query?: string;
+  slotEnd?: number;
+  count?: number;
+  markets?: PredictionMarket[];
+  match?: (PredictionMarket & { up: { label: string } | null; down: { label: string } | null }) | null;
+  raw?: string;
 }
 
 export interface Slot {

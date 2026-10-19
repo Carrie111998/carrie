@@ -43,6 +43,13 @@ export interface BotSettings {
   liveTradeAmountUsdt: number;
   liveMaxOpenPositions: number;
   liveDailyLossLimitUsdt: number;
+  liveVenue: "prediction" | "spot";
+  predictionSymbol: string;
+  predictionQuery: string;
+  predictionBetUsdt: number;
+  predictionMaxExposureUsdt: number;
+  predictionDryRun: boolean;
+  predictionAutoRedeem: boolean;
 }
 
 export function defaultSettings(): BotSettings {
@@ -81,6 +88,13 @@ export function defaultSettings(): BotSettings {
     liveTradeAmountUsdt: 5,
     liveMaxOpenPositions: 3,
     liveDailyLossLimitUsdt: 50,
+    liveVenue: "prediction",
+    predictionSymbol: "BTCUSDT",
+    predictionQuery: "BTC",
+    predictionBetUsdt: 1,
+    predictionMaxExposureUsdt: 20,
+    predictionDryRun: true,
+    predictionAutoRedeem: true,
   };
 }
 
@@ -102,6 +116,8 @@ const BOUNDS: Record<string, [number, number]> = {
   liveTradeAmountUsdt: [1, 100_000],
   liveMaxOpenPositions: [1, 20],
   liveDailyLossLimitUsdt: [1, 1_000_000],
+  predictionBetUsdt: [1, 100_000],
+  predictionMaxExposureUsdt: [1, 1_000_000],
 };
 
 const PARAM_BOUNDS: Record<string, [number, number]> = {
@@ -128,10 +144,15 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
       n[key] = INT_KEYS.has(key) ? Math.round(clamp(v, range)) : clamp(v, range);
     }
   }
-  for (const key of ["allowShort", "autoTune", "tuneWeights", "tuneThreshold", "tuneRisk", "tuneFilters"]) {
+  for (const key of ["allowShort", "autoTune", "tuneWeights", "tuneThreshold", "tuneRisk", "tuneFilters", "predictionDryRun", "predictionAutoRedeem"]) {
     if (typeof p[key] === "boolean") n[key] = p[key];
   }
   if (p.paperTradeMode === "fixed" || p.paperTradeMode === "percent") next.paperTradeMode = p.paperTradeMode;
+  if (p.liveVenue === "prediction" || p.liveVenue === "spot") next.liveVenue = p.liveVenue;
+  if (typeof p.predictionSymbol === "string" && SYMBOL_RE.test(p.predictionSymbol.trim().toUpperCase())) {
+    next.predictionSymbol = p.predictionSymbol.trim().toUpperCase();
+  }
+  if (typeof p.predictionQuery === "string" && p.predictionQuery.trim()) next.predictionQuery = p.predictionQuery.trim().slice(0, 200);
   if (typeof p.interval === "string" && (INTERVALS as readonly string[]).includes(p.interval)) {
     next.interval = p.interval as BotSettings["interval"];
   }
@@ -164,5 +185,7 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
       if (range && Number.isFinite(num)) next.indicatorParams[k] = k === "bbStd" ? clamp(num, range) : Math.round(clamp(num, range));
     }
   }
+  // the bot only predicts slots for pairs it scans
+  if (!next.symbols.includes(next.predictionSymbol)) next.symbols = [next.predictionSymbol, ...next.symbols].slice(0, 40);
   return next;
 }

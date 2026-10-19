@@ -42,6 +42,10 @@ def _http(method: str, url: str, headers: Optional[dict] = None, timeout: float 
             msg = json.loads(body).get("msg", body)
         except Exception:
             msg = body
+        if e.code == 401 or "-2015" in body:
+            msg += (" — check: (1) the Testnet switch matches the key (testnet.binance.vision keys need Testnet ON),"
+                    " (2) the key's IP whitelist includes this server, (3) 'Enable Reading' and 'Enable Spot & Margin"
+                    " Trading' are ticked. For Binance Prediction Market no API key is needed — use Settings → Prediction Market.")
         raise BinanceError(f"HTTP {e.code}: {msg}") from None
     except urllib.error.URLError as e:
         raise BinanceError(f"Network error: {e.reason}") from None
@@ -97,44 +101,47 @@ class MarketData:
 
 
 class SimulatedMarket:
-    """Offline random-walk market with trending/ranging regimes (testing only, BOT_SIMULATE=1)."""
-
-    STEP_MS = 300_000  # one 5m candle per scan
+    """Offline random-walk market (testing only, BOT_SIMULATE=1). Candles follow the real
+    clock, so slots and countdowns behave like live Binance data."""
 
     def __init__(self, seed: int = 7):
         self.rng = random.Random(seed)
-        self.series: Dict[str, list] = {}
+        self.series: Dict[str, Dict[str, list]] = {}
+        self.last_price: Dict[str, float] = {}
 
-    def _ensure(self, symbol: str, n: int):
-        s = self.series.setdefault(symbol, [])
+    def _step(self, interval: str) -> int:
+        return INTERVAL_SECONDS.get(interval, 300) * 1000
+
+    def _ensure(self, symbol: str, interval: str, n: int) -> list:
+        step = self._step(interval)
+        cur = int(time.time() * 1000) // step * step
+        s = self.series.setdefault(symbol, {}).setdefault(interval, [])
         if not s:
-            price = 100 + self.rng.random() * 900
-            s.append([price, price, price, price, 1000.0, time.time() * 1000 - 300 * self.STEP_MS])
-        drift = 0.0
-        while len(s) < n:
-            if self.rng.random() < 0.02:
-                drift = self.rng.choice([-1, 0, 0, 1]) * 0.0008
+            price = self.last_price.get(symbol) or (82_000.0 if symbol.startswith("BTC") else 100 + self.rng.random() * 900)
+            drift = 0.0
+            for i in range(n):
+                if self.rng.random() < 0.05:
+                    drift = self.rng.choice([-1, 0, 0, 1]) * 0.0008
+                o = price
+                price = o * (1 + drift + self.rng.gauss(0, 0.003))
+                s.append([o, max(o, price) * 1.0005, min(o, price) * 0.9995, price, 500 + self.rng.random() * 1500,
+                          cur - (n - 1 - i) * step])
+        while s[-1][5] < cur:
             o = s[-1][3]
-            c = o * (1 + drift + self.rng.gauss(0, 0.003))
-            h = max(o, c) * (1 + abs(self.rng.gauss(0, 0.001)))
-            l = min(o, c) * (1 - abs(self.rng.gauss(0, 0.001)))
-            s.append([o, h, l, c, 500 + self.rng.random() * 1500, s[-1][5] + self.STEP_MS])
-
-    def step(self, symbol: str, k: int = 1):
-        self._ensure(symbol, len(self.series.get(symbol, [])) + k)
+            s.append([o, o, o, o, 500 + self.rng.random() * 1500, s[-1][5] + step])
+        last = s[-1]  # the forming candle keeps moving between scans
+        last[3] = last[3] * (1 + self.rng.gauss(0, 0.0008))
+        last[1], last[2] = max(last[1], last[3]), min(last[2], last[3])
+        self.last_price[symbol] = last[3]
+        del s[:-1500]
+        return s
 
     def klines(self, symbol: str, interval: str, limit: int = 300):
-        self._ensure(symbol, limit)
-        self.step(symbol, 1)
-        rows = self.series[symbol][-limit:]
-        a = np.array(rows)
+        a = np.array(self._ensure(symbol, interval, max(limit, 300))[-limit:])
         return {"open": a[:, 0], "high": a[:, 1], "low": a[:, 2], "close": a[:, 3], "volume": a[:, 4], "time": a[:, 5]}
 
     def klines_range(self, symbol: str, interval: str, total: int):
-        sim = SimulatedMarket(seed=hash(symbol) % 1000)
-        sim._ensure(symbol, total)
-        a = np.array(sim.series[symbol][-total:])
-        return {"open": a[:, 0], "high": a[:, 1], "low": a[:, 2], "close": a[:, 3], "volume": a[:, 4], "time": a[:, 5]}
+        return self.klines(symbol, interval, min(total, 1500)) if total <= 1500 else self.klines(symbol, interval, 1500)
 
 
 class SpotTrader:
@@ -237,7 +244,7 @@ class SimulatedTrader:
         return {"canTrade": True, "balances": [{"asset": "USDT", "free": str(self.usdt), "locked": "0"}]}
 
     def _price(self, symbol):
-        return self.market.series[symbol][-1][3]
+        return self.market.last_price[symbol]
 
     def market_buy(self, symbol, quote_amount):
         p = self._price(symbol)

@@ -4,8 +4,9 @@ import { cn } from "@/lib/utils";
 export const fmtUsd = (v: number | null | undefined, digits = 2) =>
   v == null ? "—" : `${v < 0 ? "-" : ""}$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 
+// small amounts (e.g. P&L on $1 bets) get more decimals so they don't round to 0.00
 export const fmtSigned = (v: number | null | undefined, suffix = "") =>
-  v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(2)}${suffix}`;
+  v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(v !== 0 && Math.abs(v) < 1 && !suffix ? 4 : 2)}${suffix}`;
 
 export const fmtPct = (v: number | null | undefined) => (v == null ? "—" : `${v.toFixed(1)}%`);
 

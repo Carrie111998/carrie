@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Check, Minus, TrendingDown, TrendingUp, X } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
-import { api, type Kline, type Slot } from "@/lib/api";
+import { api, type Kline, type PredictionBet, type Slot } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Meter } from "@/components/bits";
 
@@ -26,6 +26,32 @@ function Call({ dir, conf }: { dir: string; conf?: number }) {
       {up ? "UP" : "DOWN"}
       {conf != null && <span className="font-mono font-normal text-foreground/80">{conf.toFixed(0)}%</span>}
     </span>
+  );
+}
+
+function BetLine({ bet }: { bet: PredictionBet | undefined }) {
+  if (!bet) return null;
+  const label: Record<string, string> = { placed: "BET PLACED", dry_run: "DRY RUN", skipped: "NO BET", failed: "BET FAILED" };
+  const color: Record<string, string> = {
+    placed: "bg-amber-500/15 text-amber-300", dry_run: "bg-sky-500/15 text-sky-300",
+    skipped: "bg-slate-500/15 text-slate-300", failed: "bg-red-500/15 text-red-300",
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      <span className={cn("rounded px-1.5 py-0.5 font-semibold", color[bet.status])}>{label[bet.status]}</span>
+      {(bet.status === "placed" || bet.status === "dry_run") && (
+        <span className="font-mono">
+          {usd(bet.amount)} on “{bet.outcome}” → {bet.shares != null ? bet.shares.toFixed(3) : "?"} shares
+          {bet.avgPrice != null && ` @ ${Number(bet.avgPrice).toFixed(3)}`}
+        </span>
+      )}
+      {bet.reason && <span className="text-muted-foreground">{bet.reason}</span>}
+      {bet.result && bet.status === "placed" && (
+        <span className={bet.result === "win" ? "text-emerald-400" : "text-red-400"}>
+          {bet.result} {bet.pnl != null && `${bet.pnl >= 0 ? "+" : ""}${bet.pnl.toFixed(4)} USDT (est.)`}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -121,6 +147,7 @@ export default function LiveMarket() {
   const currentCall = slots.find((s) => s.slotStart === start);
   const past = [...slots].filter((s) => s.close != null).reverse();
   const lean = state?.signals?.find((s) => s.symbol === symbol);
+  const betFor = (t: number) => state?.prediction?.bets.find((b) => b.symbol === symbol && b.slotStart === t);
   const upcoming = [1, 2, 3, 4].map((i) => start + i * slotMs);
   const selectedPast = typeof selected === "number" && selected < start ? slots.find((s) => s.slotStart === selected) : undefined;
   const selectedFuture = typeof selected === "number" && selected > start ? selected : undefined;
@@ -285,6 +312,7 @@ export default function LiveMarket() {
               {usd(selectedPast.open, dp)} → {usd(selectedPast.close, dp)} ({selectedPast.actual})
             </span>
             <Result slot={selectedPast} />
+            <BetLine bet={betFor(selectedPast.slotStart)} />
           </div>
         ) : selectedFuture ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -313,6 +341,7 @@ export default function LiveMarket() {
               )}
             </div>
             <Meter value={currentCall.confidence} className="max-w-xs" />
+            <BetLine bet={betFor(start)} />
             <div className="text-[11px] text-muted-foreground">Called at {hhmmss(currentCall.predictedAt)} using closed candles only.</div>
           </div>
         ) : (

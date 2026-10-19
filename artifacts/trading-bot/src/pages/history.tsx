@@ -3,7 +3,7 @@ import { Download } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
 import { api, authHeaders, tradesCsvUrl, type Trade } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Empty, ModeBadge, SideBadge, Stat, fmtDateTime, fmtPct, fmtPrice, fmtSigned, pnlClass } from "@/components/bits";
+import { Empty, ModeBadge, SideBadge, Stat, fmtDateTime, fmtPct, fmtPrice, fmtSigned, fmtUsd, pnlClass } from "@/components/bits";
 import { cn } from "@/lib/utils";
 
 type Filter = "all" | "paper" | "live";
@@ -84,7 +84,7 @@ export default function History() {
                   <span className="text-[11px] text-muted-foreground">{t.exitReason.replace("_", " ")}</span>
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground font-mono truncate">
-                  {fmtDateTime(t.openTime)} · {fmtPrice(t.entryPrice)} → {fmtPrice(t.exitPrice)} · conf {t.confidence.toFixed(0)}% · {t.regime}
+                  {fmtDateTime(t.openTime)} · bet {fmtUsd(t.quote)} · {fmtPrice(t.entryPrice)} → {fmtPrice(t.exitPrice)} · conf {t.confidence.toFixed(0)}% · {t.regime}
                 </div>
               </div>
               <div className="text-right flex-shrink-0">

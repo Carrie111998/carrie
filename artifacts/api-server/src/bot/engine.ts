@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
 import { applyPatch, defaultSettings, type BotSettings } from "./settings";
 import { DATA_DIR, workspaceRoot } from "./paths";
+import { BAW_BIN } from "../prediction";
 
 export { DATA_DIR, workspaceRoot };
 
@@ -88,7 +89,11 @@ export class Engine {
   start() {
     if (this.proc) return;
     logger.info({ userId: this.userId, dataDir: this.dataDir }, "Starting Python bot engine");
-    const proc = spawn(process.env["PYTHON"] ?? "python3", [BOT_SCRIPT], { stdio: ["pipe", "pipe", "pipe"], env: process.env });
+    const proc = spawn(process.env["PYTHON"] ?? "python3", [BOT_SCRIPT], {
+      stdio: ["pipe", "pipe", "pipe"],
+      // each user's Binance Agentic Wallet session lives in their own data folder
+      env: { ...process.env, BAW_BIN, BINANCE_BAW_DIR: path.join(this.dataDir, "baw") },
+    });
     this.proc = proc;
     proc.stdout.on("data", (chunk: Buffer) => {
       this.buffer += chunk.toString();

@@ -31,6 +31,9 @@ from binance_client import (  # noqa: E402
     INTERVAL_SECONDS, BinanceError, MarketData, SimulatedMarket, SimulatedTrader, SpotTrader,
 )
 from indicators import AI_KEY, INDICATORS, MIN_CANDLES, compute_votes, market_context  # noqa: E402
+from prediction_market import (  # noqa: E402
+    PredictionClient, PredictionError, match_slot_market, pick_outcome, symbol_words,
+)
 
 SIMULATE = os.environ.get("BOT_SIMULATE") == "1"
 MAX_TRADES = 5000
@@ -89,6 +92,14 @@ DEFAULT_SETTINGS = {
     "liveTradeAmountUsdt": 5.0,
     "liveMaxOpenPositions": 3,
     "liveDailyLossLimitUsdt": 50.0,
+    # live venue: "prediction" = Binance Prediction Market (Agentic Wallet), "spot" = Binance Spot API keys
+    "liveVenue": "prediction",
+    "predictionSymbol": "BTCUSDT",
+    "predictionQuery": "BTC",
+    "predictionBetUsdt": 1.0,
+    "predictionMaxExposureUsdt": 20.0,
+    "predictionDryRun": True,
+    "predictionAutoRedeem": True,
 }
 
 
@@ -125,6 +136,10 @@ class Bot:
         self.sim = SimulatedMarket() if SIMULATE else None
         self.market = self.sim if SIMULATE else MarketData()
         self.study_cache: Optional[dict] = None
+        self.pm: Optional[PredictionClient] = None
+        self.pm_status: Optional[str] = None
+        self.pm_balance_at = 0.0
+        self.pm_redeem_at = 0.0
         self.calibrating: Optional[dict] = None
 
     # ─── Persistence ────────────────────────────────────────────────────────
@@ -141,6 +156,7 @@ class Bot:
             "learning": learner.empty_learning(),
             "liveDaily": {},
             "slots": {},
+            "predictionBets": [],
         }
 
     def _path(self):
@@ -255,6 +271,7 @@ class Bot:
 
         self.phase = "trading"
         self.open_new_positions(candidates)
+        self.prediction_housekeeping()
         self.maybe_autotune()
         self.snapshot_equity(prices)
         self.last_cycle = now_ms()
@@ -287,7 +304,7 @@ class Bot:
             sig["reasons"] = self.entry_blockers(sig, "paper")
             if not sig["reasons"] and len(self.positions("paper")) < s["maxOpenPositions"]:
                 self.open_paper(sig)
-            if self.live_enabled and self.trader:
+            if self.live_enabled and self.trader and self.settings.get("liveVenue") == "spot":
                 if not self.entry_blockers(sig, "live") and len(self.positions("live")) < s["liveMaxOpenPositions"]:
                     if self.live_loss_today() >= s["liveDailyLossLimitUsdt"]:
                         self.add_error("Daily live loss limit reached — live trading switched off")
@@ -418,15 +435,123 @@ class Bot:
                 sl["actual"] = "up" if sl["close"] > sl["open"] else "down" if sl["close"] < sl["open"] else "flat"
                 sl["hit"] = None if sl["direction"] == "neutral" or sl["actual"] == "flat" else (
                     (sl["direction"] == "long") == (sl["actual"] == "up"))
+                self.settle_prediction_bet(sym, sl)
         if not slots or slots[-1]["slotStart"] < cur:
-            slots.append({
+            slot = {
                 "slotStart": cur, "slotEnd": cur + interval_ms, "open": float(c["open"][-1]),
                 "direction": sig["direction"], "confidence": sig["confidence"],
                 "predictedAt": now_ms(), "priceAtPrediction": sig["price"],
                 "close": None, "actual": None, "hit": None,
-            })
+            }
+            slots.append(slot)
+            if self.live_enabled and self.settings.get("liveVenue") == "prediction" and sym == self.settings["predictionSymbol"]:
+                self.place_prediction_bet(sym, slot, sig)
         # forget unscorable slots (missed candles) and keep history small
         self.data["slots"][sym] = [sl for sl in slots if sl["close"] is not None or sl["slotStart"] >= times[0]][-200:]
+
+    # ─── Binance Prediction Market bets ──────────────────────────────────────
+
+    def prediction_exposure(self) -> float:
+        return sum(b["amount"] for b in self.data["predictionBets"] if b["status"] == "placed" and b.get("result") is None)
+
+    def place_prediction_bet(self, sym: str, slot: dict, sig: dict):
+        s = self.settings
+        bet = {
+            "id": uuid.uuid4().hex[:12], "symbol": sym, "slotStart": slot["slotStart"], "slotEnd": slot["slotEnd"],
+            "direction": sig["direction"], "confidence": sig["confidence"], "amount": float(s["predictionBetUsdt"]),
+            "dryRun": bool(s["predictionDryRun"]), "status": "skipped", "reason": None, "createdAt": now_ms(),
+            "marketTopicId": None, "marketTitle": None, "outcome": None, "tokenId": None,
+            "shares": None, "avgPrice": None, "fee": None, "orderId": None, "result": None, "pnl": None,
+        }
+        reasons = []
+        if sig["direction"] == "neutral":
+            reasons.append("no clear direction")
+        if sig["confidence"] < s["minConfidence"]:
+            reasons.append(f"confidence {sig['confidence']:.0f}% < {s['minConfidence']}%")
+        if time.gmtime().tm_hour in s["blockedHours"]:
+            reasons.append("hour blocked by auto-tune")
+        if not bet["dryRun"] and self.prediction_exposure() + bet["amount"] > s["predictionMaxExposureUsdt"]:
+            reasons.append("max exposure reached")
+        if self.live_loss_today() >= s["liveDailyLossLimitUsdt"]:
+            reasons.append("daily loss limit reached")
+            self.live_enabled = False
+        if reasons:
+            bet["reason"] = ", ".join(reasons)
+            return self._record_bet(bet)
+        try:
+            markets, _ = self.pm.search(s["predictionQuery"])
+            m = match_slot_market(markets, symbol_words(sym), slot["slotEnd"])
+            if not m:
+                raise PredictionError(f"no open {sym} market ends at this slot's close — check Settings → Find markets")
+            if not m["outcomes"] or not pick_outcome(m, sig["direction"]):
+                detail = self.pm.market_detail(m["marketTopicId"])
+                m = next((x for x in detail if x["marketTopicId"] == m["marketTopicId"]), m)
+            outcome = pick_outcome(m, sig["direction"])
+            if not outcome:
+                raise PredictionError(f"could not find the {'Up' if sig['direction'] == 'long' else 'Down'} outcome in '{m['title']}'")
+            bet.update(marketTopicId=m["marketTopicId"], marketTitle=m["title"], outcome=outcome["label"], tokenId=outcome["tokenId"])
+            q = self.pm.quote(m, outcome, bet["amount"])
+            bet.update(shares=float(q.get("amountOut") or 0), avgPrice=q.get("averagePrice"), fee=q.get("feeAmount"))
+            if bet["dryRun"]:
+                bet["status"] = "dry_run"
+            else:
+                r = self.pm.place(q)
+                bet["orderId"] = str(r.get("orderId") or r.get("id") or r.get("orderNo") or "")
+                bet["status"] = "placed"
+                self.pm_balance_at = 0  # refresh balance next cycle
+            log(f"PREDICTION {'quote (dry run)' if bet['dryRun'] else 'BET'} {bet['outcome']} {bet['amount']:g} USDT "
+                f"→ {bet['shares']:.4g} shares @ {bet['avgPrice']} on '{bet['marketTitle']}'", "trade")
+        except PredictionError as e:
+            bet["status"] = "failed"
+            bet["reason"] = str(e)
+            self.add_error(f"Prediction bet failed: {e}")
+        self._record_bet(bet)
+
+    def _record_bet(self, bet: dict):
+        self.data["predictionBets"].append(bet)
+        del self.data["predictionBets"][:-500]
+
+    def settle_prediction_bet(self, sym: str, slot: dict):
+        bet = next((b for b in self.data["predictionBets"] if b["symbol"] == sym and b["slotStart"] == slot["slotStart"]
+                    and b["status"] in ("placed", "dry_run") and b["result"] is None), None)
+        if not bet or slot["hit"] is None:
+            if bet and slot["actual"] == "flat":
+                bet["result"] = "flat"
+            return
+        won = slot["hit"]
+        shares = bet["shares"] or 0.0
+        bet["result"] = "win" if won else "loss"
+        bet["pnl"] = round((shares if won else 0.0) - bet["amount"], 4)  # estimate; market oracle decides the payout
+        if bet["status"] != "placed":
+            return
+        trade = {
+            "id": bet["id"], "mode": "live", "symbol": sym, "side": bet["direction"], "qty": shares,
+            "entryPrice": slot["open"], "exitPrice": slot["close"], "quote": bet["amount"], "openTime": bet["createdAt"],
+            "closeTime": now_ms(), "confidence": bet["confidence"], "score": 0, "votes": {}, "regime": "prediction",
+            "adx": 0, "heldCandles": 1, "orderId": bet["orderId"], "pnl": bet["pnl"], "fees": 0.0,
+            "pnlPct": round(100 * bet["pnl"] / bet["amount"], 3) if bet["amount"] else 0.0,
+            "result": bet["result"], "exitReason": "slot_settled",
+        }
+        self.data["trades"].insert(0, trade)
+        day = time.strftime("%Y-%m-%d", time.gmtime())
+        self.data["liveDaily"][day] = self.data["liveDaily"].get(day, 0.0) + bet["pnl"]
+        self.study_cache = None
+        emit("trade_closed", trade)
+
+    def prediction_housekeeping(self):
+        if not self.pm or self.settings.get("liveVenue") != "prediction" or not self.live_enabled:
+            return
+        if time.time() - self.pm_balance_at > 60:
+            self.refresh_live_account(quiet=True)
+        if self.settings.get("predictionAutoRedeem") and time.time() - self.pm_redeem_at > 300:
+            self.pm_redeem_at = time.time()
+            try:
+                n = self.pm.redeem_all()
+                if n:
+                    log(f"Redeemed {n} winning prediction position(s)", "trade")
+                    self.pm_balance_at = 0
+            except PredictionError as e:
+                self.add_error(f"Redeem failed: {e}")
 
     def slot_view(self) -> dict:
         out, total, hits = {}, 0, 0
@@ -542,6 +667,8 @@ class Bot:
             self.trader = None
 
     def refresh_live_account(self, quiet: bool = False) -> dict:
+        if self.settings.get("liveVenue") == "prediction":
+            return self.refresh_prediction_wallet(quiet)
         if not self.trader:
             self.live_account = None
             return {"ok": False, "error": "API key and secret are not set"}
@@ -555,6 +682,24 @@ class Bot:
             self.live_account = {"ok": False, "error": str(e), "testnet": getattr(self.trader, "testnet", True), "checkedAt": now_ms()}
             if not quiet:
                 self.add_error(f"Binance account check failed: {e}")
+        return self.live_account
+
+    def refresh_prediction_wallet(self, quiet: bool = False) -> dict:
+        self.pm_balance_at = time.time()
+        if not self.pm:
+            return {"ok": False, "error": "bot not initialised"}
+        try:
+            self.pm_status = self.pm.status()
+            if self.pm_status != "CONNECTED":
+                self.live_account = {"ok": False, "venue": "prediction", "status": self.pm_status, "checkedAt": now_ms(),
+                                     "error": "Binance Agentic Wallet is not signed in — connect it in Settings"}
+            else:
+                self.live_account = {"ok": True, "venue": "prediction", "status": "CONNECTED",
+                                     "usdt": self.pm.usdt_balance(), "canTrade": True, "testnet": False, "checkedAt": now_ms()}
+        except PredictionError as e:
+            self.live_account = {"ok": False, "venue": "prediction", "error": str(e), "checkedAt": now_ms()}
+            if not quiet:
+                self.add_error(f"Prediction wallet check failed: {e}")
         return self.live_account
 
     # ─── State for the UI ───────────────────────────────────────────────────
@@ -573,10 +718,10 @@ class Bot:
         return {
             "trades": len(tr), "wins": len(wins), "losses": len(losses),
             "winRate": wr(tr), "winRate20": wr(tr[:20]), "winRate50": wr(tr[:50]),
-            "pnl": round(sum(t["pnl"] for t in tr), 2),
-            "pnlToday": round(sum(t["pnl"] for t in tr if t["closeTime"] >= day_ago), 2),
-            "avgWin": round(gross_win / len(wins), 2) if wins else 0.0,
-            "avgLoss": round(-gross_loss / len(losses), 2) if losses else 0.0,
+            "pnl": round(sum(t["pnl"] for t in tr), 4),
+            "pnlToday": round(sum(t["pnl"] for t in tr if t["closeTime"] >= day_ago), 4),
+            "avgWin": round(gross_win / len(wins), 4) if wins else 0.0,
+            "avgLoss": round(-gross_loss / len(losses), 4) if losses else 0.0,
             "profitFactor": round(gross_win / gross_loss, 2) if gross_loss > 0 else None,
             "open": len(self.positions(mode)),
         }
@@ -647,7 +792,8 @@ class Bot:
                 "lastCycle": self.last_cycle, "cycleMs": self.cycle_ms,
                 "nextCycle": int(self.next_cycle * 1000) if self.running else None,
                 "simulated": SIMULATE, "errors": self.errors[:10], "calibrating": self.calibrating,
-                "hasCredentials": self.trader is not None, "liveAccount": self.live_account,
+                "hasCredentials": self.trader is not None or self.settings.get("liveVenue") == "prediction",
+                "venue": self.settings.get("liveVenue"), "liveAccount": self.live_account,
             },
             "paper": paper | {"balance": round(self.data["paper"]["balance"], 2), "equity": round(equity, 2),
                               "startBalance": start, "returnPct": round(100 * (equity - start) / start, 2) if start else 0},
@@ -659,6 +805,11 @@ class Bot:
             "equity": self.data["equity"][-200:],
             "recentTrades": self.data["trades"][:50],
             "slots": self.slot_view(),
+            "prediction": {
+                "venue": self.settings.get("liveVenue"), "dryRun": self.settings.get("predictionDryRun"),
+                "symbol": self.settings.get("predictionSymbol"), "exposure": round(self.prediction_exposure(), 4),
+                "bets": self.data["predictionBets"][-40:][::-1],
+            },
             "settings": self.settings,
         })
 
@@ -685,6 +836,8 @@ class Bot:
             self.load()
             self.credentials = msg.get("credentials") or {}
             self.build_trader()
+            if self.data_dir:
+                self.pm = PredictionClient(os.environ.get("BINANCE_BAW_DIR") or os.path.join(self.data_dir, "baw"))
         elif cmd == "settings":
             self.settings = merge_settings(DEFAULT_SETTINGS, msg.get("settings") or {})
             self.signals = {k: v for k, v in self.signals.items() if k in self.settings["symbols"]}
@@ -716,10 +869,38 @@ class Bot:
                 if not self.running:
                     self.running = True
                     self.next_cycle = 0
-                log(f"LIVE trading ON ({'testnet' if self.trader.testnet else 'REAL MONEY'})", "trade")
+                if self.settings.get("liveVenue") == "prediction":
+                    mode = "DRY RUN — quotes only" if self.settings["predictionDryRun"] else "REAL BETS"
+                    log(f"LIVE prediction betting ON on {self.settings['predictionSymbol']} ({mode})", "trade")
+                else:
+                    log(f"LIVE trading ON ({'testnet' if self.trader.testnet else 'REAL MONEY'})", "trade")
             else:
                 self.live_enabled = False
                 log("Live trading OFF (open live positions are still managed until they close)", "trade")
+        elif cmd == "prediction_markets":
+            try:
+                if not self.pm:
+                    raise PredictionError("bot not initialised")
+                query = (msg.get("query") or self.settings["predictionQuery"]).strip()
+                markets, raw = self.pm.search(query, max_age=0)
+                step = INTERVAL_SECONDS.get(self.settings["interval"], 300) * 1000
+                slot_end = (now_ms() // step + 1) * step
+                sym = self.settings["predictionSymbol"]
+                m = match_slot_market(markets, symbol_words(sym), slot_end)
+                upcoming = sorted([x for x in markets if x["endTime"] and x["endTime"] > now_ms()], key=lambda x: x["endTime"])
+                emit("response", {
+                    "ok": True, "query": query, "slotEnd": slot_end, "count": len(markets),
+                    "markets": (upcoming or markets)[:20],
+                    "match": m and {**m, "up": pick_outcome(m, "long"), "down": pick_outcome(m, "short")},
+                    "raw": json.dumps(raw, default=str)[:3000],
+                }, reqId=req)
+            except PredictionError as e:
+                emit("response", {"ok": False, "error": str(e)}, reqId=req)
+            return
+        elif cmd == "prediction_refresh":
+            emit("response", self.refresh_prediction_wallet(), reqId=req)
+            self.emit_state()
+            return
         elif cmd == "test_credentials":
             emit("response", self.refresh_live_account(), reqId=req)
             self.emit_state()

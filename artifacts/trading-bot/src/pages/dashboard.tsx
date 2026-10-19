@@ -16,7 +16,9 @@ import {
 } from "@/components/bits";
 
 function LiveConfirm({ open, onOpenChange, testnet, amount }: { open: boolean; onOpenChange: (v: boolean) => void; testnet: boolean; amount: number }) {
-  const { run } = useBot();
+  const { run, settings } = useBot();
+  const prediction = settings?.liveVenue === "prediction";
+  const dryRun = prediction && settings?.predictionDryRun;
   const [typed, setTyped] = useState("");
   return (
     <AlertDialog open={open} onOpenChange={(v) => { onOpenChange(v); setTyped(""); }}>
@@ -24,15 +26,26 @@ function LiveConfirm({ open, onOpenChange, testnet, amount }: { open: boolean; o
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-400" />
-            Start {testnet ? "TESTNET" : "REAL-MONEY"} auto trading?
+            {prediction
+              ? `Start ${dryRun ? "DRY-RUN" : "REAL-MONEY"} prediction betting?`
+              : `Start ${testnet ? "TESTNET" : "REAL-MONEY"} auto trading?`}
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2 text-sm">
-              <p>
-                The bot will place real Binance Spot market orders of <b>{fmtUsd(amount)}</b> for every long signal that passes your
-                filters, and sell when the stop-loss, take-profit or time limit is hit.
-              </p>
-              {!testnet && <p className="text-amber-300">This uses real funds. Crypto is volatile and past accuracy does not guarantee profit — only trade money you can afford to lose.</p>}
+              {prediction ? (
+                <p>
+                  At the start of every {settings?.interval} slot the bot will {dryRun ? "get a quote (no money is spent)" : <>bet <b>{fmtUsd(settings?.predictionBetUsdt)}</b> USDT</>}{" "}
+                  on Up or Down for <b>{settings?.predictionSymbol}</b> on Binance Prediction Market when its confidence passes your minimum.
+                </p>
+              ) : (
+                <p>
+                  The bot will place real Binance Spot market orders of <b>{fmtUsd(amount)}</b> for every long signal that passes your
+                  filters, and sell when the stop-loss, take-profit or time limit is hit.
+                </p>
+              )}
+              {((prediction && !dryRun) || (!prediction && !testnet)) && (
+                <p className="text-amber-300">This uses real funds. Prediction bets can go to zero and past accuracy does not guarantee profit — only use money you can afford to lose.</p>
+              )}
               <p>Type <b>START</b> to confirm.</p>
             </div>
           </AlertDialogDescription>
@@ -64,7 +77,7 @@ function PositionRow({ p }: { p: Position }) {
           <ModeBadge mode={p.mode} />
         </div>
         <div className="text-xs text-muted-foreground mt-0.5 font-mono">
-          {fmtPrice(p.entryPrice)} → {fmtPrice(p.lastPrice)} · SL {fmtPrice(p.sl)} · TP {fmtPrice(p.tp)}
+          bet {fmtUsd(p.quote)} · {fmtPrice(p.entryPrice)} → {fmtPrice(p.lastPrice)} · SL {fmtPrice(p.sl)} · TP {fmtPrice(p.tp)}
         </div>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -133,7 +146,7 @@ export default function Dashboard() {
 
       {!st?.hasCredentials && (
         <div className="rounded-md border border-border bg-card px-4 py-2 text-xs text-muted-foreground">
-          Paper trading runs without keys. To enable live trading add your Binance API key & secret in{" "}
+          Paper trading needs no account. To trade live, connect your Binance Agentic Wallet (Prediction Market) or add Spot API keys in{" "}
           <Link href="/settings" className="text-primary underline">Settings</Link>.
         </div>
       )}
@@ -197,7 +210,7 @@ export default function Dashboard() {
           {st?.hasCredentials && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Stat
-                label={st.liveAccount?.testnet ? "Testnet USDT" : "Binance USDT"}
+                label={st.venue === "prediction" ? "Prediction balance" : st.liveAccount?.testnet ? "Testnet USDT" : "Binance USDT"}
                 value={st.liveAccount?.ok ? fmtUsd(st.liveAccount.usdt) : "—"}
                 sub={st.liveAccount?.ok === false ? "check failed" : st.liveEnabled ? "live ON" : "live off"}
                 valueClass="text-amber-300"
