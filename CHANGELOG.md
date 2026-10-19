@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.3.4 — 2026-10-19
+
+- **Open positions shows real bets**: Binance Prediction bets (tagged LIVE, or TEST in test mode) appear in Open positions next to paper bets until their round settles, with the amount, payout, market, end time and what a win pays.
+
 ## v3.3.3 — 2026-10-19
 
 - **5-minute rounds only** for everyone (15 min removed; anyone on 15 min moves to 5 min).

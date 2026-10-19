@@ -4,7 +4,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "rec
 import { AlertTriangle, Play, Square, X, Zap } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
 import { useAuth } from "@/hooks/useAuth";
-import { api, type Position } from "@/lib/api";
+import { api, type Position, type PredictionBet } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -64,6 +64,34 @@ function LiveConfirm({ open, onOpenChange, testnet, amount }: { open: boolean; o
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+/** A real (or test-mode) bet on Binance Prediction that has not been settled yet. */
+function LiveBetRow({ b }: { b: PredictionBet }) {
+  const up = b.direction === "long";
+  const win = b.shares != null ? b.shares - b.amount : null;
+  return (
+    <div className="flex items-center justify-between gap-2 py-2.5 border-b border-border last:border-0">
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-sm font-semibold">{b.symbol}</span>
+          <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${up ? "border-emerald-500/30 text-emerald-700" : "border-red-500/30 text-red-700"}`}>
+            {up ? "UP" : "DOWN"}
+          </span>
+          <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${b.status === "placed" ? "bg-amber-500/15 text-amber-800" : "bg-secondary text-muted-foreground"}`}>
+            {b.status === "placed" ? "LIVE" : "TEST"}
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5 font-mono truncate">
+          {fmtUsd(b.amount)} USDT{b.payout ? ` · ${b.payout}× payout` : ""} · {b.marketTitle ?? "Binance Prediction"} · ends {fmtTime(b.slotEnd)}
+        </div>
+      </div>
+      <div className="text-right flex-shrink-0">
+        <div className="text-sm font-mono font-semibold text-emerald-700">{win != null ? `+${fmtUsd(win)}` : "—"}</div>
+        <div className="text-xs text-muted-foreground">if it wins</div>
+      </div>
+    </div>
   );
 }
 
@@ -128,6 +156,10 @@ function RunTimer({ stopAt }: { stopAt: number | null }) {
 
 export default function Dashboard() {
   const { state, settings, run } = useBot();
+  // real (and test-mode) Binance Prediction bets still waiting for their round to settle
+  const openBets = (state?.prediction?.bets ?? []).filter(
+    (b) => (b.status === "placed" || b.status === "dry_run") && b.result == null && b.slotEnd > Date.now() - 10 * 60_000,
+  );
   const { user } = useAuth();
   const [confirmLive, setConfirmLive] = useState(false);
   const st = state?.status;
@@ -299,8 +331,15 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title={`Open positions (${state?.positions?.length ?? 0})`}>
-          {state?.positions?.length ? state.positions.map((p) => <PositionRow key={p.id} p={p} />) : <Empty>No open positions.</Empty>}
+        <Panel title={`Open positions (${(state?.positions?.length ?? 0) + openBets.length})`}>
+          {openBets.length || state?.positions?.length ? (
+            <>
+              {openBets.map((b) => <LiveBetRow key={b.id} b={b} />)}
+              {state?.positions?.map((p) => <PositionRow key={p.id} p={p} />)}
+            </>
+          ) : (
+            <Empty>No open positions.</Empty>
+          )}
         </Panel>
         <Panel title="Activity" action={<Link href="/history" className="text-xs text-primary">All trades</Link>}>
           <div className="max-h-72 overflow-y-auto space-y-1.5 text-xs font-mono">

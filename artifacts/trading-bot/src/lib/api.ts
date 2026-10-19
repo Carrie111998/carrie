@@ -259,6 +259,7 @@ export interface PredictionBet {
   orderId: string | null;
   result: "win" | "loss" | "flat" | null;
   pnl: number | null;
+  payout?: number | null;
 }
 
 export interface PredictionMarket {
