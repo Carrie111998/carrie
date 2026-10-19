@@ -4,7 +4,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
 import { applyPatch, defaultSettings, SETTINGS_VERSION, withoutBrain, type BotSettings } from "./settings";
-import { loadBrain, brainSettings, markBrainFix, onBrainChange, setLastTuneTrades, updateBrain } from "./brain";
+import { loadBrain, brainSettings, markBrainFix, resetBrainHistory, onBrainChange, setLastTuneTrades, updateBrain } from "./brain";
 import { DATA_DIR, workspaceRoot } from "./paths";
 import { BAW_BIN } from "../prediction";
 
@@ -53,6 +53,35 @@ function syncUsersToAdmin(adminIds: string[]) {
   markBrainFix("sync-users-v306");
 }
 
+/**
+ * One-time fresh start (v3.1.2, admin's request): delete every user's practice trades, practice
+ * balance, learning data and slot history, plus the pooled community dataset. Accounts, settings,
+ * API keys, wallet sessions and anything involving real money (live trades, open live positions,
+ * unsettled real bets) are kept.
+ */
+function freshStart() {
+  const b = loadBrain();
+  if (b.fixes?.includes("fresh-start-v312")) return;
+  const usersDir = path.join(DATA_DIR, "users");
+  let users = 0;
+  for (const id of existsSync(usersDir) ? readdirSync(usersDir) : []) {
+    const file = path.join(userDataDir(id), "bot_data.json");
+    const d = readJson<Record<string, any>>(file);
+    if (!d) continue;
+    writeJson(file, {
+      positions: (d.positions ?? []).filter((p: any) => p.mode === "live"),
+      trades: (d.trades ?? []).filter((t: any) => t.mode === "live"),
+      predictionBets: (d.predictionBets ?? []).filter((x: any) => x.status === "placed" && x.result == null),
+      liveDaily: d.liveDaily ?? {},
+    });
+    users++;
+  }
+  rmSync(path.join(GLOBAL_DIR, "collective.json"), { force: true });
+  resetBrainHistory();
+  markBrainFix("fresh-start-v312");
+  logger.info({ users }, "Fresh start: deleted old practice trades, learning data and community dataset");
+}
+
 /** Create the shared brain from the first admin's settings (only the first time). */
 export function initBrain(adminIds: string[]) {
   loadBrain(() => {
@@ -63,6 +92,7 @@ export function initBrain(adminIds: string[]) {
     return applyPatch(defaultSettings(), communityRecommended());
   });
   syncUsersToAdmin(adminIds);
+  freshStart();
 }
 
 /**

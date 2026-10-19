@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.1.2 — 2026-10-19
+
+- **Fresh start** (admin's request, runs once on update): every user's practice trades, practice balance, AI model, indicator statistics and slot history are deleted, plus the pooled community dataset and the brain's change log. Kept: accounts, settings, API keys, wallet connections, the shared strategy settings, and anything involving real money (live trades, open live positions, unsettled real bets).
+
 ## v3.1.1 — 2026-10-19
 
 - **AI model can't lean one way anymore**: it learns from each vote minus that vote's usual level and from every outcome mirrored (Up⇄Down), and ignores the slow trend vote. Before, a vote stuck near +1 let it learn "the market fell lately" as a permanent Down lean (live AI vote sat at about −0.75 on every coin). AI models restart once with the new training.

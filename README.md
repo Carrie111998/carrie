@@ -1,4 +1,4 @@
-# Binance Predict Bot — v3.1.1
+# Binance Predict Bot — v3.1.2
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed; older versions are archived in [`archive/`](archive/).
 

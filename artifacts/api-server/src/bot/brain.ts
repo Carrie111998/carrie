@@ -159,6 +159,15 @@ export function loadBrain(seed?: () => BotSettings | null): BrainFile {
   return brain;
 }
 
+/** Fresh start: clear the change log and tune only on trades from now on (settings are kept). */
+export function resetBrainHistory() {
+  const b = loadBrain();
+  b.log = [{ time: Date.now(), source: "admin", by: "fresh start", changes: [{ param: "data", from: "old trades", to: "deleted", reason: "admin: start from new" }] }];
+  b.tuneSince = Date.now();
+  b.lastTuneTrades = 0;
+  save();
+}
+
 /** Record a one-time repair as done. */
 export function markBrainFix(name: string) {
   const b = loadBrain();
