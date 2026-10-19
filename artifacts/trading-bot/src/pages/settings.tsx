@@ -37,7 +37,7 @@ function Num({ value, onChange, step = 1, min, max }: { value: number; onChange:
   );
 }
 
-const QUICK_AMOUNTS = [1, 2, 5, 10, 25, 50];
+const QUICK_AMOUNTS = [1, 1.5, 2, 5, 10, 25];
 
 /** USD amount with quick-pick chips; never below the 1 USD minimum. */
 function AmountInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
@@ -287,7 +287,7 @@ export default function Settings() {
                   {[...new Set([draft.predictionSymbol, ...draft.symbols])].map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </Field>
-              <Field label="Bet amount per slot (USDT)" hint="Minimum and standard bet is 1 USDT.">
+              <Field label="Fixed bet per slot (USDT)" hint="Same size every slot — never increased after a loss. Minimum 1 USDT.">
                 <AmountInput value={n("predictionBetUsdt")} onChange={(v) => set("predictionBetUsdt", v)} />
               </Field>
               <Field label="Max open exposure (USDT)" hint="No new bets while unsettled bets add up to this.">
@@ -364,23 +364,9 @@ export default function Settings() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Paper start balance (USDT)" hint="Applied after Reset paper account."><Num value={n("paperStartBalance")} onChange={(v) => set("paperStartBalance", v)} /></Field>
-          <Field label="Bet amount type">
-            <select
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              value={draft.paperTradeMode}
-              onChange={(e) => set("paperTradeMode", e.target.value as BotSettings["paperTradeMode"])}
-            >
-              <option value="fixed">Fixed USD per trade</option>
-              <option value="percent">% of paper balance</option>
-            </select>
+          <Field label="Fixed bet per round (USD)" hint="Same size every round — never increased after a loss. Minimum $1.">
+            <AmountInput value={n("paperTradeAmountUsdt")} onChange={(v) => set("paperTradeAmountUsdt", v)} />
           </Field>
-          {draft.paperTradeMode === "fixed" ? (
-            <Field label="Bet amount per trade (USD)" hint="Minimum and standard bet is 1 USD.">
-              <AmountInput value={n("paperTradeAmountUsdt")} onChange={(v) => set("paperTradeAmountUsdt", v)} />
-            </Field>
-          ) : (
-            <Field label="Trade size (% of balance)" hint="Never less than 1 USD per trade."><Num value={n("paperTradeSizePct")} onChange={(v) => set("paperTradeSizePct", v)} step={0.5} /></Field>
-          )}
           {draft.paperMode === "prediction" ? (
             <>
               <Field label="Max bets per slot" hint="Best-confidence pairs first.">

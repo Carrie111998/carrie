@@ -66,7 +66,7 @@ DEFAULT_SETTINGS = {
     "maxOpenPositions": 5,
     "paperStartBalance": 100.0,
     "paperTradeMode": "fixed",      # "fixed" USDT per trade or "percent" of balance
-    "paperTradeAmountUsdt": 1.0,    # minimum / default bet is 1 USD
+    "paperTradeAmountUsdt": 1.5,    # fixed bet every round (never raised after a loss); minimum 1 USD
     "paperTradeSizePct": 5.0,
     # "prediction" = dummy Binance Prediction Up/Down bets per slot, "spot" = long/short positions with SL/TP
     "paperMode": "prediction",
@@ -99,7 +99,7 @@ DEFAULT_SETTINGS = {
     "liveVenue": "prediction",
     "predictionSymbol": "BTCUSDT",
     "predictionQuery": "BTC",
-    "predictionBetUsdt": 1.0,
+    "predictionBetUsdt": 1.5,
     "predictionMaxExposureUsdt": 20.0,
     "predictionDryRun": True,
     "predictionAutoRedeem": True,
@@ -343,7 +343,7 @@ class Bot:
             if any(p["symbol"] == sym and p.get("kind") == "prediction" for p in self.positions("paper")):
                 continue
             bal = self.data["paper"]["balance"]
-            amount = round(bal * s["paperTradeSizePct"] / 100, 2) if s.get("paperTradeMode") == "percent" else float(s.get("paperTradeAmountUsdt", 1.0))
+            amount = float(s.get("paperTradeAmountUsdt", 1.5))  # same size every slot, win or lose
             amount = max(1.0, amount)
             if amount > bal:
                 continue

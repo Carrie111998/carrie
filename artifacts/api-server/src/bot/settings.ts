@@ -64,7 +64,7 @@ export function defaultSettings(): BotSettings {
     maxOpenPositions: 5,
     paperStartBalance: 100,
     paperTradeMode: "fixed",
-    paperTradeAmountUsdt: 1,
+    paperTradeAmountUsdt: 1.5,
     paperTradeSizePct: 5,
     paperMode: "prediction",
     paperPredictionPrice: 0.5,
@@ -95,7 +95,7 @@ export function defaultSettings(): BotSettings {
     liveVenue: "prediction",
     predictionSymbol: "BTCUSDT",
     predictionQuery: "BTC",
-    predictionBetUsdt: 1,
+    predictionBetUsdt: 1.5,
     predictionMaxExposureUsdt: 20,
     predictionDryRun: true,
     predictionAutoRedeem: true,
@@ -155,6 +155,8 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
   if (p.paperTradeMode === "fixed" || p.paperTradeMode === "percent") next.paperTradeMode = p.paperTradeMode;
   if (p.liveVenue === "prediction" || p.liveVenue === "spot") next.liveVenue = p.liveVenue;
   if (p.paperMode === "prediction" || p.paperMode === "spot") next.paperMode = p.paperMode;
+  // Fixed bet size only: never scale bets with balance or after losses.
+  next.paperTradeMode = "fixed";
   if (typeof p.predictionSymbol === "string" && SYMBOL_RE.test(p.predictionSymbol.trim().toUpperCase())) {
     next.predictionSymbol = p.predictionSymbol.trim().toUpperCase();
   }

@@ -116,6 +116,10 @@ export default function Dashboard() {
   const learning = state?.learning;
   const running = st?.running ?? false;
   const equity = (state?.equity ?? []).map((e) => ({ t: e.t, v: e.v }));
+  // Fixed-size 1:1-style bets: a win pays (1/price − 1) × bet, a loss costs the bet, plus the fee.
+  const predictionMode = settings?.paperMode === "prediction";
+  const breakEven = predictionMode && settings ? 100 * settings.paperPredictionPrice * (1 + settings.feePct / 100) : null;
+  const aboveBreakEven = breakEven != null && paper?.winRate != null ? paper.winRate > breakEven : null;
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
@@ -211,10 +215,23 @@ export default function Dashboard() {
             <Stat label="Paper equity" value={fmtUsd(paper?.equity)} sub={`start ${fmtUsd(paper?.startBalance, 0)}`} />
             <Stat label="Return" value={fmtSigned(paper?.returnPct, "%")} valueClass={pnlClass(paper?.returnPct)} />
             <Stat label="P&L 24h" value={fmtSigned(paper?.pnlToday)} valueClass={pnlClass(paper?.pnlToday)} sub="USDT" />
-            <Stat label="Win rate" value={fmtPct(paper?.winRate)} sub={`${paper?.wins ?? 0}W / ${paper?.losses ?? 0}L`} />
+            <Stat
+              label="Win rate"
+              value={fmtPct(paper?.winRate)}
+              valueClass={aboveBreakEven == null ? undefined : aboveBreakEven ? "text-emerald-400" : "text-red-400"}
+              sub={`${breakEven != null ? `need >${breakEven.toFixed(1)}% · ` : ""}${paper?.wins ?? 0}W / ${paper?.losses ?? 0}L`}
+            />
             <Stat label="Profit factor" value={paper?.profitFactor ?? "—"} sub={`avg ${fmtSigned(paper?.avgWin)} / ${fmtSigned(paper?.avgLoss)}`} />
             <Stat label="Open" value={`${paper?.open ?? 0} / ${settings?.maxOpenPositions ?? "—"}`} sub={`${paper?.trades ?? 0} closed`} />
           </div>
+          {predictionMode && settings && (
+            <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+              Fixed bet <b className="text-foreground">{fmtUsd(settings.paperTradeAmountUsdt)}</b> every round — never increased after a loss. A win pays{" "}
+              <b className="text-emerald-400">+{fmtUsd(settings.paperTradeAmountUsdt * (1 / settings.paperPredictionPrice - 1))}</b>, a loss costs{" "}
+              <b className="text-red-400">−{fmtUsd(settings.paperTradeAmountUsdt)}</b>. Profitable only while the win rate stays above{" "}
+              <b className="text-foreground">{breakEven?.toFixed(1)}%</b>.
+            </div>
+          )}
           {st?.hasCredentials && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Stat
