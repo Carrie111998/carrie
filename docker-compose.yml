@@ -1,10 +1,15 @@
 services:
   trader:
+    # Built by .github/workflows/docker.yml on every push to main.
+    # `docker compose up --build` builds locally from this repo instead.
+    image: ghcr.io/carrie111998/carrie:latest
     build: .
     container_name: binance-predict-bot
     restart: unless-stopped
+    # Traefik (host network) routes trader.kepexo.com to the container; the
+    # port is only bound to localhost for debugging with curl on the VPS.
     ports:
-      - "8888:8888"
+      - "127.0.0.1:8888:8888"
     volumes:
       # users, trades, learning data and API keys live here — keep this volume
       - trader-data:/app/data
@@ -18,7 +23,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.trader.rule=Host(`trader.kepexo.com`)"
       - "traefik.http.routers.trader.entrypoints=websecure"
-      - "traefik.http.routers.trader.tls.certresolver=myresolver"
+      - "traefik.http.routers.trader.tls.certresolver=letsencrypt"
       - "traefik.http.services.trader.loadbalancer.server.port=8888"
 
 volumes:
