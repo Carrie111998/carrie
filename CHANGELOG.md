@@ -2,6 +2,14 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.0.5 — 2026-10-19
+
+- **Practice bets = real bets**: one rule book decides both — clear Up/Down signal, minimum confidence, Down bets allowed, coin/hour not blocked, bets-per-slot cap, at least 20% of the slot left, and the **payout must be at least the minimum (default 1.65×)**. Real bets use Binance's live quote; practice bets use a fair-price estimate (distance from the price to beat, time left and recent volatility, plus a small spread). Real bets additionally respect your wallet limits (daily loss, max open money).
+- **Bets during a running slot**: the bot re-checks every scan and bets as soon as the rules pass and the payout reaches the minimum — not only at the slot's start. If the payout is too low it waits and checks again.
+- Admin setting *Minimum payout (×)* in the shared brain; the Dashboard explains the payout rule and the break-even win rate.
+- Auto-tune now learns only from trades after this update (older trades came from the Up-biased bot), and coin/hour blocks learned from them were cleared.
+- Logs show why a slot got no bet (e.g. "confidence 58% < 62%", "payout 1.52x < 1.65x").
+
 ## v3.0.4 — 2026-10-19
 
 - **Practice bets on every slot, Up or Down**: dummy Prediction bets no longer need the minimum confidence (that limit only ever let the old Up-biased predictions through, so every past bet was Up). Auto-tune now gets a fair record of which confidence levels win. Real-money bets still need the minimum confidence.

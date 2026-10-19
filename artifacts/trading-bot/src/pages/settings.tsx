@@ -417,7 +417,9 @@ export default function Settings() {
               <Field label="Scan every (seconds)"><Num value={n("scanIntervalSec")} onChange={(v) => set("scanIntervalSec", v)} min={10} /></Field>
               <Field label="Prediction horizon (candles)"><Num value={n("predictionHorizon")} onChange={(v) => set("predictionHorizon", v)} min={1} /></Field>
               <Field label="Max bets / positions per round"><Num value={n("maxOpenPositions")} onChange={(v) => set("maxOpenPositions", v)} /></Field>
-              <Field label="Assumed share price" hint="0.50 = 50/50 market."><Num value={n("paperPredictionPrice")} onChange={(v) => set("paperPredictionPrice", v)} step={0.01} /></Field>
+              <Field label="Minimum payout (×)" hint="Bet only when a win pays at least this × the stake (1.65 = $1 returns $1.65). Same rule for practice and real bets; checked all through the slot.">
+                <Num value={n("minPayout")} onChange={(v) => set("minPayout", v)} step={0.05} min={1.05} max={10} />
+              </Field>
               <Field label="Fee %"><Num value={n("feePct")} onChange={(v) => set("feePct", v)} step={0.01} /></Field>
               <Field label="Stop-loss (× ATR, spot)"><Num value={n("slAtrMult")} onChange={(v) => set("slAtrMult", v)} step={0.1} /></Field>
               <Field label="Take-profit (× ATR, spot)"><Num value={n("tpAtrMult")} onChange={(v) => set("tpAtrMult", v)} step={0.1} /></Field>

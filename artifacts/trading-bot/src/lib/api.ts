@@ -50,6 +50,7 @@ export interface BotSettings {
   predictionAutoRedeem: boolean;
   useCommunityLearning: boolean;
   runDurationMin: number;
+  minPayout: number;
   settingsVersion: number;
 }
 

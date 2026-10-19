@@ -15,12 +15,15 @@ All trades, learning statistics and the paper account are persisted to
 from __future__ import annotations
 
 import json
+import math
 import os
 import queue
 import re
 import sys
 import threading
 import time
+
+import numpy as np
 import traceback
 import uuid
 from typing import Dict, List, Optional, Tuple
@@ -38,6 +41,8 @@ from prediction_market import (  # noqa: E402
 
 SIMULATE = os.environ.get("BOT_SIMULATE") == "1"
 MAX_TRADES = 5000
+BET_CUTOFF_FRACTION = 0.2   # no new Prediction bets in the last 20% of a slot (e.g. last 60 s of 5 min)
+PRACTICE_SPREAD = 0.02      # practice share prices include a small spread, like the real order book
 MAX_EQUITY_POINTS = 500
 
 
@@ -106,6 +111,7 @@ DEFAULT_SETTINGS = {
     "predictionAutoRedeem": True,
     # learn from every user's settled trades (anonymous pool built by collective.py)
     "useCommunityLearning": True,
+    "minPayout": 1.65,
 }
 
 
@@ -287,6 +293,8 @@ class Bot:
                 "confidence": a["confidence"], "score": a["score"], "votes": a["votes"],
                 "atr": a["atr"], "adx": round(a["adx"], 1), "rsi": round(a["rsi"], 1), "regime": a["regime"],
                 "blocked": sym in s["blockedSymbols"], "reasons": [],
+                # typical move per candle (log returns), for the practice fair price
+                "vol": float(np.std(np.diff(np.log(closed["close"][-60:])))) if len(closed["close"]) > 10 else 0.001,
             }
             self.signals[sym] = sig
             if a["direction"] != 0 and a["confidence"] >= 50:
@@ -298,8 +306,8 @@ class Bot:
 
         self.phase = "trading"
         self.open_new_positions(candidates)
-        if s.get("paperMode") == "prediction":
-            self.open_paper_predictions(self._new_slots)
+        self.log_new_slots(self._new_slots)
+        self.run_slot_bets()
         self.prediction_housekeeping()
         self.maybe_autotune()
         self.snapshot_equity(prices)
@@ -329,64 +337,119 @@ class Bot:
 
     # ─── Paper "Binance Prediction" bets (dummy Up/Down bet on every slot) ──
 
-    def prediction_blockers(self, sig: dict) -> List[str]:
-        """Practice (dummy) bets go on every slot, Up or Down, whatever the confidence: that gives
-        auto-tune a fair record of which confidence levels actually win. Real bets keep the
-        minimum confidence (see place_prediction_bet)."""
+    # One rule book for practice (demo) and real Prediction bets: the same checks decide both, so a
+    # practice bet is exactly the bet the bot would place with real money. Only the price source
+    # differs: real bets use Binance's live quote, practice bets a fair-price estimate.
+
+    def bet_blockers(self, sig: dict, slot: dict) -> List[str]:
         s = self.settings
         r = []
         if sig["direction"] == "neutral":
             r.append("no clear direction")
+        if sig["confidence"] < s["minConfidence"]:
+            r.append(f"confidence {sig['confidence']:.0f}% < {s['minConfidence']}%")
         if sig["symbol"] in s["blockedSymbols"]:
-            r.append("symbol blocked by auto-tune")
+            r.append("coin blocked by auto-tune")
         if time.gmtime().tm_hour in s["blockedHours"]:
             r.append("hour blocked by auto-tune")
         if sig["direction"] == "short" and not s["allowShort"]:
             r.append("Down bets disabled")
+        left = slot["slotEnd"] - now_ms()
+        if left < BET_CUTOFF_FRACTION * (slot["slotEnd"] - slot["slotStart"]):
+            r.append("too late in the slot")
         return r
 
-    def open_paper_predictions(self, new_slots: List[tuple]):
-        """Bet on the slots that opened this cycle: best confidence first, up to maxOpenPositions per slot."""
+    def fair_share_price(self, sig: dict, slot: dict) -> float:
+        """Practice price of the predicted side: chance the slot ends that way if price keeps moving
+        randomly at its recent volatility, plus a small spread like a real order book."""
+        left = max(1.0, (slot["slotEnd"] - now_ms()) / 1000)
+        length = max(1.0, (slot["slotEnd"] - slot["slotStart"]) / 1000)
+        vol = max(1e-6, float(sig.get("vol") or 0.001)) * math.sqrt(left / length)
+        z = math.log(max(1e-12, sig["price"]) / slot["open"]) / vol
+        p_up = 0.5 * (1 + math.erf(z / math.sqrt(2)))
+        p = p_up if sig["direction"] == "long" else 1 - p_up
+        return min(0.97, max(0.03, p + PRACTICE_SPREAD))
+
+    def slot_bets_placed(self, slot_start: int, live: bool) -> int:
+        if live:
+            return sum(1 for b in self.data["predictionBets"] if b["slotStart"] == slot_start and b["status"] in ("placed", "dry_run"))
+        return sum(1 for p in self.positions("paper") if p.get("kind") == "prediction" and p.get("slotStart") == slot_start)
+
+    def run_slot_bets(self):
+        """Every scan: for each coin's running slot, bet (practice and/or real) once the rules pass
+        and the payout is at least the minimum — at the slot's start or any time before the cutoff."""
         s = self.settings
-        placed = 0
-        skipped: Dict[str, int] = {}
-        for sym, slot, sig in sorted(new_slots, key=lambda x: -x[2]["confidence"]):
-            blockers = self.prediction_blockers(sig)
-            if placed >= s["maxOpenPositions"]:
-                blockers = blockers or ["max bets per slot reached"]
-            if blockers:
-                # group "confidence 61% < 78%" style reasons so the summary stays short
-                key = re.sub(r"\d+%? <", "<", blockers[0])
-                skipped[key] = skipped.get(key, 0) + 1
+        for sym in s["symbols"]:
+            sig = self.signals.get(sym)
+            slots = self.data["slots"].get(sym) or []
+            if not sig or not slots or slots[-1]["close"] is not None:
                 continue
-            if any(p["symbol"] == sym and p.get("kind") == "prediction" for p in self.positions("paper")):
+            slot = slots[-1]
+            if not (slot["slotStart"] <= now_ms() < slot["slotEnd"]):
                 continue
-            bal = self.data["paper"]["balance"]
-            amount = float(s.get("paperTradeAmountUsdt", 1.5))  # same size every slot, win or lose
-            amount = max(1.0, amount)
-            if amount > bal:
-                continue
-            price = min(0.95, max(0.05, float(s.get("paperPredictionPrice", 0.5))))
-            self.data["paper"]["balance"] = bal - amount
-            self.data["positions"].append({
-                "id": uuid.uuid4().hex[:12], "mode": "paper", "kind": "prediction", "symbol": sym, "side": sig["direction"],
-                "qty": amount / price, "entryPrice": slot["open"], "quote": amount, "entryFee": amount * s["feePct"] / 100,
-                "sl": 0.0, "tp": 0.0, "openTime": now_ms(), "openCandle": slot["slotStart"], "checkedFrom": slot["slotStart"],
-                "slotStart": slot["slotStart"], "slotEnd": slot["slotEnd"], "heldCandles": 0, "lastPrice": sig["price"],
-                "confidence": sig["confidence"], "score": sig["score"], "votes": sig["votes"], "regime": sig["regime"],
-                "adx": sig["adx"], "orderId": None, "sellFailures": 0, "sharePrice": price,
+            blockers = self.bet_blockers(sig, slot)
+            if s.get("paperMode") == "prediction":
+                self.try_paper_bet(sym, slot, sig, blockers)
+            if self.live_enabled and self.pm and s.get("liveVenue") == "prediction":
+                self.try_live_bet(sym, slot, sig, blockers)
+
+    def try_paper_bet(self, sym: str, slot: dict, sig: dict, blockers: List[str]):
+        s = self.settings
+        if any(p["symbol"] == sym and p.get("kind") == "prediction" and p.get("slotStart") == slot["slotStart"]
+               for p in self.positions("paper")):
+            return
+        if self.slot_bets_placed(slot["slotStart"], live=False) >= s["maxOpenPositions"]:
+            blockers = blockers + ["max bets per slot reached"]
+        price = self.fair_share_price(sig, slot) if not blockers else None
+        payout = 1 / price if price else None
+        if payout is not None and payout < s["minPayout"]:
+            blockers = [f"payout {payout:.2f}x < {s['minPayout']:g}x"]
+        if blockers:
+            slot["paperWait"] = blockers[0]
+            return
+        bal = self.data["paper"]["balance"]
+        amount = max(1.0, float(s.get("paperTradeAmountUsdt", 1.5)))  # same size every slot, win or lose
+        if amount > bal:
+            slot["paperWait"] = "practice balance too low"
+            return
+        self.data["paper"]["balance"] = bal - amount
+        self.data["positions"].append({
+            "id": uuid.uuid4().hex[:12], "mode": "paper", "kind": "prediction", "symbol": sym, "side": sig["direction"],
+            "qty": amount / price, "entryPrice": slot["open"], "quote": amount, "entryFee": amount * s["feePct"] / 100,
+            "sl": 0.0, "tp": 0.0, "openTime": now_ms(), "openCandle": slot["slotStart"], "checkedFrom": slot["slotStart"],
+            "slotStart": slot["slotStart"], "slotEnd": slot["slotEnd"], "heldCandles": 0, "lastPrice": sig["price"],
+            "confidence": sig["confidence"], "score": sig["score"], "votes": sig["votes"], "regime": sig["regime"],
+            "adx": sig["adx"], "orderId": None, "sellFailures": 0, "sharePrice": round(price, 4), "payout": round(payout, 3),
+            "priceAtBet": sig["price"],
+        })
+        slot.pop("paperWait", None)
+        left = int((slot["slotEnd"] - now_ms()) / 1000)
+        log(f"PAPER bet {'UP' if sig['direction'] == 'long' else 'DOWN'} {sym} {amount:g} USDT @ {price:.2f} "
+            f"(payout {payout:.2f}x, beat {slot['open']:.6g}, now {sig['price']:.6g}, conf {sig['confidence']:.0f}%, {left // 60}m{left % 60:02d}s left)")
+
+    def log_new_slots(self, new_slots: List[tuple]):
+        if not new_slots:
+            return
+        log(f"Slot {time.strftime('%H:%M', time.gmtime(new_slots[0][1]['slotStart'] / 1000))} UTC predictions: " + ", ".join(
+            f"{sym.replace('USDT', '')} {'UP' if sig['direction'] == 'long' else 'DOWN' if sig['direction'] == 'short' else '-'}"
+            f" {sig['confidence']:.0f}% (score {sig['score']:+.2f}, ai {sig['votes'].get('ai', 0):+.2f})"
+            + (f" — {', '.join(self.bet_blockers(sig, slot))}" if self.bet_blockers(sig, slot) else "")
+            for sym, slot, sig in new_slots), "slot")
+
+    def log_slot_result(self, sym: str, slot: dict, live_on: bool):
+        """Why a slot got no bet (logged once, when the slot closes)."""
+        if slot.get("paperWait") and self.settings.get("paperMode") == "prediction" and not any(
+                t.get("kind") == "prediction" and t.get("openTime", 0) >= slot["slotStart"] and t["symbol"] == sym
+                for t in self.data["trades"][:20]):
+            log(f"{sym} {time.strftime('%H:%M', time.gmtime(slot['slotStart'] / 1000))}: no practice bet — {slot['paperWait']}")
+        if live_on and not any(b["symbol"] == sym and b["slotStart"] == slot["slotStart"] for b in self.data["predictionBets"]):
+            self._record_bet({
+                "id": uuid.uuid4().hex[:12], "symbol": sym, "slotStart": slot["slotStart"], "slotEnd": slot["slotEnd"],
+                "direction": slot["direction"], "confidence": slot["confidence"], "amount": float(self.settings["predictionBetUsdt"]),
+                "dryRun": bool(self.settings["predictionDryRun"]), "status": "skipped", "reason": slot.get("liveWait") or "no entry",
+                "createdAt": now_ms(), "marketTopicId": None, "marketTitle": None, "outcome": None, "tokenId": None,
+                "shares": None, "avgPrice": None, "fee": None, "orderId": None, "result": None, "pnl": None,
             })
-            placed += 1
-            log(f"PAPER bet {'UP' if sig['direction'] == 'long' else 'DOWN'} {sym} {amount:g} USDT @ {price:.2f} "
-                f"(beat {slot['open']:.6g}, conf {sig['confidence']:.0f}%)")
-        if new_slots:
-            why = ", ".join(f"{k} ×{v}" for k, v in sorted(skipped.items(), key=lambda x: -x[1]))
-            log(f"Slot {time.strftime('%H:%M', time.gmtime(new_slots[0][1]['slotStart'] / 1000))} UTC: {placed} paper bet(s) placed"
-                + (f", {sum(skipped.values())} skipped ({why})" if skipped else "")
-                + " · predictions: " + ", ".join(
-                    f"{sym.replace('USDT', '')} {'UP' if sig['direction'] == 'long' else 'DOWN' if sig['direction'] == 'short' else '-'}"
-                    f" {sig['confidence']:.0f}% (score {sig['score']:+.2f}, ai {sig['votes'].get('ai', 0):+.2f}, trend {sig['votes'].get('trend', 0):+.2f})"
-                    for sym, _slot, sig in new_slots), "slot")
 
     def settle_paper_prediction(self, sym: str, slot: dict):
         pos = next((p for p in self.positions("paper") if p.get("kind") == "prediction" and p["symbol"] == sym
@@ -417,7 +480,11 @@ class Bot:
         s = self.settings
         prediction_paper = s.get("paperMode") == "prediction"
         for sig in sorted(candidates, key=lambda x: -x["confidence"]):
-            sig["reasons"] = self.prediction_blockers(sig) if prediction_paper else self.entry_blockers(sig, "paper")
+            slots = self.data["slots"].get(sig["symbol"]) or []
+            if prediction_paper:
+                sig["reasons"] = self.bet_blockers(sig, slots[-1]) if slots else ["waiting for the first slot"]
+            else:
+                sig["reasons"] = self.entry_blockers(sig, "paper")
             if not prediction_paper and not sig["reasons"] and len(self.positions("paper")) < s["maxOpenPositions"]:
                 self.open_paper(sig)
             if self.live_enabled and self.trader and self.settings.get("liveVenue") == "spot":
@@ -554,6 +621,7 @@ class Bot:
                 sl["actual"] = "up" if sl["close"] > sl["open"] else "down" if sl["close"] < sl["open"] else "flat"
                 sl["hit"] = None if sl["direction"] == "neutral" or sl["actual"] == "flat" else (
                     (sl["direction"] == "long") == (sl["actual"] == "up"))
+                self.log_slot_result(sym, sl, self.live_enabled and self.settings.get("liveVenue") == "prediction")
                 self.settle_prediction_bet(sym, sl)
                 self.settle_paper_prediction(sym, sl)
         if not slots or slots[-1]["slotStart"] < cur:
@@ -565,8 +633,6 @@ class Bot:
             }
             slots.append(slot)
             self._new_slots.append((sym, slot, sig))
-            if self.live_enabled and self.settings.get("liveVenue") == "prediction" and sym in self.settings["symbols"]:
-                self.place_prediction_bet(sym, slot, sig)
         # forget unscorable slots (missed candles) and keep history small
         self.data["slots"][sym] = [sl for sl in slots if sl["close"] is not None or sl["slotStart"] >= times[0]][-200:]
 
@@ -575,32 +641,31 @@ class Bot:
     def prediction_exposure(self) -> float:
         return sum(b["amount"] for b in self.data["predictionBets"] if b["status"] == "placed" and b.get("result") is None)
 
-    def place_prediction_bet(self, sym: str, slot: dict, sig: dict):
+    def try_live_bet(self, sym: str, slot: dict, sig: dict, blockers: List[str]):
         s = self.settings
-        bet = {
-            "id": uuid.uuid4().hex[:12], "symbol": sym, "slotStart": slot["slotStart"], "slotEnd": slot["slotEnd"],
-            "direction": sig["direction"], "confidence": sig["confidence"], "amount": float(s["predictionBetUsdt"]),
-            "dryRun": bool(s["predictionDryRun"]), "status": "skipped", "reason": None, "createdAt": now_ms(),
-            "marketTopicId": None, "marketTitle": None, "outcome": None, "tokenId": None,
-            "shares": None, "avgPrice": None, "fee": None, "orderId": None, "result": None, "pnl": None,
-        }
-        reasons = []
-        if sig["direction"] == "neutral":
-            reasons.append("no clear direction")
-        if sig["confidence"] < s["minConfidence"]:
-            reasons.append(f"confidence {sig['confidence']:.0f}% < {s['minConfidence']}%")
-        if time.gmtime().tm_hour in s["blockedHours"]:
-            reasons.append("hour blocked by auto-tune")
-        if sig["direction"] == "short" and not s["allowShort"]:
-            reasons.append("Down bets disabled by auto-tune")
-        if not bet["dryRun"] and self.prediction_exposure() + bet["amount"] > s["predictionMaxExposureUsdt"]:
+        if any(b["symbol"] == sym and b["slotStart"] == slot["slotStart"] and b["status"] in ("placed", "dry_run", "failed")
+               for b in self.data["predictionBets"]):
+            return
+        reasons = list(blockers)
+        amount = float(s["predictionBetUsdt"])
+        dry = bool(s["predictionDryRun"])
+        if self.slot_bets_placed(slot["slotStart"], live=True) >= s["maxOpenPositions"]:
+            reasons.append("max bets per slot reached")
+        if not dry and self.prediction_exposure() + amount > s["predictionMaxExposureUsdt"]:
             reasons.append("max exposure reached")
         if self.live_loss_today() >= s["liveDailyLossLimitUsdt"]:
             reasons.append("daily loss limit reached")
             self.live_enabled = False
         if reasons:
-            bet["reason"] = ", ".join(reasons)
-            return self._record_bet(bet)
+            slot["liveWait"] = reasons[0]
+            return
+        bet = {
+            "id": uuid.uuid4().hex[:12], "symbol": sym, "slotStart": slot["slotStart"], "slotEnd": slot["slotEnd"],
+            "direction": sig["direction"], "confidence": sig["confidence"], "amount": amount,
+            "dryRun": dry, "status": "skipped", "reason": None, "createdAt": now_ms(),
+            "marketTopicId": None, "marketTitle": None, "outcome": None, "tokenId": None,
+            "shares": None, "avgPrice": None, "fee": None, "orderId": None, "result": None, "pnl": None, "payout": None,
+        }
         try:
             markets, _ = self.pm.search(symbol_words(sym)[0].upper())
             m = match_slot_market(markets, symbol_words(sym), slot["slotEnd"])
@@ -612,18 +677,23 @@ class Bot:
             outcome = pick_outcome(m, sig["direction"])
             if not outcome:
                 raise PredictionError(f"could not find the {'Up' if sig['direction'] == 'long' else 'Down'} outcome in '{m['title']}'")
-            bet.update(marketTopicId=m["marketTopicId"], marketTitle=m["title"], outcome=outcome["label"], tokenId=outcome["tokenId"])
-            q = self.pm.quote(m, outcome, bet["amount"])
-            bet.update(shares=float(q.get("amountOut") or 0), avgPrice=q.get("averagePrice"), fee=q.get("feeAmount"))
-            if bet["dryRun"]:
+            q = self.pm.quote(m, outcome, amount)
+            shares = float(q.get("amountOut") or 0)
+            payout = shares / amount if amount else 0.0  # each winning share pays 1 USDT
+            if payout < s["minPayout"]:
+                slot["liveWait"] = f"payout {payout:.2f}x < {s['minPayout']:g}x"
+                return  # wait: check again next scan
+            bet.update(marketTopicId=m["marketTopicId"], marketTitle=m["title"], outcome=outcome["label"], tokenId=outcome["tokenId"],
+                       shares=shares, avgPrice=q.get("averagePrice"), fee=q.get("feeAmount"), payout=round(payout, 3))
+            if dry:
                 bet["status"] = "dry_run"
             else:
                 r = self.pm.place(q)
                 bet["orderId"] = str(r.get("orderId") or r.get("id") or r.get("orderNo") or "")
                 bet["status"] = "placed"
                 self.pm_balance_at = 0  # refresh balance next cycle
-            log(f"PREDICTION {'quote (dry run)' if bet['dryRun'] else 'BET'} {bet['outcome']} {bet['amount']:g} USDT "
-                f"→ {bet['shares']:.4g} shares @ {bet['avgPrice']} on '{bet['marketTitle']}'", "trade")
+            log(f"PREDICTION {'quote (dry run)' if dry else 'BET'} {bet['outcome']} {amount:g} USDT "
+                f"→ {shares:.4g} shares @ {bet['avgPrice']} (payout {payout:.2f}x) on '{bet['marketTitle']}'", "trade")
         except PredictionError as e:
             bet["status"] = "failed"
             bet["reason"] = str(e)

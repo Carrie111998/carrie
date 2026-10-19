@@ -138,7 +138,7 @@ export default function Dashboard() {
   const equity = (state?.equity ?? []).map((e) => ({ t: e.t, v: e.v }));
   // Fixed-size 1:1-style bets: a win pays (1/price − 1) × bet, a loss costs the bet, plus the fee.
   const predictionMode = settings?.paperMode === "prediction";
-  const breakEven = predictionMode && settings ? 100 * settings.paperPredictionPrice * (1 + settings.feePct / 100) : null;
+  const breakEven = predictionMode && settings ? (100 / settings.minPayout) * (1 + settings.feePct / 100) : null; // worst case: a bet at the minimum payout
   const aboveBreakEven = breakEven != null && paper?.winRate != null ? paper.winRate > breakEven : null;
 
   return (
@@ -249,10 +249,11 @@ export default function Dashboard() {
           </div>
           {predictionMode && settings && (
             <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-              Fixed bet <b className="text-foreground">{fmtUsd(settings.paperTradeAmountUsdt)}</b> every round — never increased after a loss. A win pays{" "}
-              <b className="text-emerald-700">+{fmtUsd(settings.paperTradeAmountUsdt * (1 / settings.paperPredictionPrice - 1))}</b>, a loss costs{" "}
-              <b className="text-red-700">−{fmtUsd(settings.paperTradeAmountUsdt)}</b>. Profitable only while the win rate stays above{" "}
-              <b className="text-foreground">{breakEven?.toFixed(1)}%</b>.
+              Fixed bet <b className="text-foreground">{fmtUsd(settings.paperTradeAmountUsdt)}</b> every round — never increased after a loss. Bets are placed only when a win pays at least{" "}
+              <b className="text-foreground">{settings.minPayout}×</b> (a win returns at least{" "}
+              <b className="text-emerald-700">+{fmtUsd(settings.paperTradeAmountUsdt * (settings.minPayout - 1))}</b>), a loss costs{" "}
+              <b className="text-red-700">−{fmtUsd(settings.paperTradeAmountUsdt)}</b>. Practice bets follow exactly the same rules as real bets.
+              At the minimum payout you need a win rate above <b className="text-foreground">{breakEven?.toFixed(1)}%</b>.
             </div>
           )}
           {st?.hasCredentials && (

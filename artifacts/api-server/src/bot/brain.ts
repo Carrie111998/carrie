@@ -22,6 +22,8 @@ interface BrainFile {
   log: TuneEntry[];
   /** one-time repairs already applied */
   fixes?: string[];
+  /** auto-tune only learns from trades opened after this (older ones came from the Up-biased bot) */
+  tuneSince?: number;
 }
 
 const FILE = path.join(DATA_DIR, "global", "brain.json");
@@ -62,6 +64,25 @@ export function loadBrain(seed?: () => BotSettings | null): BrainFile {
       });
       logger.info("Brain: Down bets switched back on");
     }
+    save();
+  }
+  // v3.0.5: the trades before the direction fixes were all Up bets from a biased bot — tune only on
+  // newer trades, and drop the coin/hour blocks auto-tune learned from them
+  if (!brain.fixes.includes("fresh-tune-v305")) {
+    brain.fixes.push("fresh-tune-v305");
+    brain.tuneSince = Date.now();
+    const blocked = { symbols: brain.settings.blockedSymbols ?? [], hours: brain.settings.blockedHours ?? [] };
+    brain.settings.blockedSymbols = [];
+    brain.settings.blockedHours = [];
+    brain.lastTuneTrades = 0;
+    brain.log.unshift({
+      time: Date.now(), source: "admin", by: "v3.0.5 update",
+      changes: [
+        { param: "blockedSymbols", from: JSON.stringify(blocked.symbols), to: "[]", reason: "learned from old Up-only trades" },
+        { param: "blockedHours", from: JSON.stringify(blocked.hours), to: "[]", reason: "learned from old Up-only trades" },
+        { param: "tuneSince", from: "all trades", to: new Date(brain.tuneSince).toISOString(), reason: "auto-tune now learns only from new, balanced trades" },
+      ],
+    });
     save();
   }
   return brain;

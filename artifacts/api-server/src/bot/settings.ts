@@ -58,6 +58,8 @@ export interface BotSettings {
   predictionAutoRedeem: boolean;
   useCommunityLearning: boolean;
   runDurationMin: number;
+  /** only bet when a winning bet pays at least this many times the stake (e.g. 1.65×) */
+  minPayout: number;
   /** schema version of this settings file; bumped when defaults change for everyone */
   settingsVersion: number;
 }
@@ -70,7 +72,7 @@ export const SETTINGS_VERSION = 3;
  * each user's own basic setup (coins, slot time, amounts, limits, paper/live).
  */
 export const BRAIN_KEYS = [
-  "scanIntervalSec", "predictionHorizon", "minConfidence", "maxOpenPositions", "paperPredictionPrice",
+  "scanIntervalSec", "predictionHorizon", "minConfidence", "maxOpenPositions", "paperPredictionPrice", "minPayout",
   "allowShort", "slAtrMult", "tpAtrMult", "maxHoldCandles", "minAdx", "feePct", "indicators", "indicatorParams",
   "autoTune", "autoTuneEvery", "tuneWeights", "tuneThreshold", "tuneRisk", "tuneFilters", "blockedSymbols", "blockedHours",
 ] as const satisfies readonly (keyof BotSettings)[];
@@ -133,6 +135,7 @@ export function defaultSettings(): BotSettings {
     predictionAutoRedeem: true,
     useCommunityLearning: true,
     runDurationMin: 0,
+    minPayout: 1.65,
     settingsVersion: SETTINGS_VERSION,
   };
 }
@@ -158,6 +161,7 @@ const BOUNDS: Record<string, [number, number]> = {
   liveDailyLossLimitUsdt: [1, 1_000_000],
   predictionBetUsdt: [1, 100_000],
   predictionMaxExposureUsdt: [1, 1_000_000],
+  minPayout: [1.05, 10],
 };
 
 const PARAM_BOUNDS: Record<string, [number, number]> = {
