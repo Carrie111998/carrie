@@ -85,7 +85,31 @@ export function loadBrain(seed?: () => BotSettings | null): BrainFile {
     });
     save();
   }
+  // v3.0.6 (admin's choice): every bet needs at least 60% confidence; auto-tune keeps the
+  // threshold there and tunes the rest
+  if (!brain.fixes.includes("min-confidence-60")) {
+    brain.fixes.push("min-confidence-60");
+    const from = brain.settings.minConfidence;
+    brain.settings.minConfidence = 60;
+    brain.settings.tuneThreshold = false;
+    brain.log.unshift({
+      time: Date.now(), source: "admin", by: "v3.0.6 update",
+      changes: [
+        { param: "minConfidence", from: String(from), to: "60", reason: "admin: bet at 60% confidence or more" },
+        { param: "tuneThreshold", from: "true", to: "false", reason: "keep the 60% minimum fixed" },
+      ],
+    });
+    save();
+  }
   return brain;
+}
+
+/** Record a one-time repair as done. */
+export function markBrainFix(name: string) {
+  const b = loadBrain();
+  b.fixes ??= [];
+  if (!b.fixes.includes(name)) b.fixes.push(name);
+  save();
 }
 
 export const brainSettings = (): Partial<BotSettings> => loadBrain().settings;

@@ -34,6 +34,40 @@ def user_tag(user_id: str) -> str:
     return hashlib.sha256(user_id.encode()).hexdigest()[:10]
 
 
+def analyse(trades: list, indicators: dict) -> dict:
+    """Compact breakdown of settled trades for the server log: what wins and what loses."""
+    def grp(keyfn):
+        out = {}
+        for t in trades:
+            k = keyfn(t)
+            if k is None:
+                continue
+            g = out.setdefault(str(k), [0, 0, 0.0])
+            g[0] += 1
+            g[1] += t["result"] == "win"
+            g[2] += t.get("pnl") or 0
+        return {k: f"{v[0]}t {100 * v[1] / v[0]:.0f}% {v[2]:+.2f}" for k, v in sorted(out.items())}
+
+    def conf_floor(t):
+        c = t.get("confidence") or 0
+        return min(80, int(c // 5) * 5)
+
+    at_least = {}
+    for th in (40, 45, 50, 55, 60, 65, 70, 75):
+        sub = [t for t in trades if (t.get("confidence") or 0) >= th]
+        if sub:
+            w = sum(1 for t in sub if t["result"] == "win")
+            at_least[f">={th}"] = f"{len(sub)}t {100 * w / len(sub):.0f}% {sum(t.get('pnl') or 0 for t in sub):+.2f}"
+    ind = {k: f"{100 * learner.accuracy(v)[0]:.0f}%/{learner.accuracy(v)[1]:.0f}" for k, v in sorted(indicators.items())}
+    return {
+        "byConfidenceBucket": grp(conf_floor), "confidenceAtLeast": at_least,
+        "byCoin": grp(lambda t: t.get("symbol")), "byDirection": grp(lambda t: t.get("side")),
+        "byCoinDirection": grp(lambda t: f"{t.get('symbol', '')[:3]}-{t.get('side')}"),
+        "byHourUTC": grp(lambda t: time.gmtime((t.get("openTime") or 0) / 1000).tm_hour),
+        "byMode": grp(lambda t: t.get("mode")), "indicatorAccuracy": ind,
+    }
+
+
 def main(data_dir: str):
     trades = []
     users = 0
@@ -78,6 +112,15 @@ def main(data_dir: str):
             best = m
     if best and best.get("samples", 0) > learning["model"].get("samples", 0):
         learning["model"] = best
+    best_ind = {}
+    for path in glob.glob(os.path.join(data_dir, "users", "*", "bot_data.json")):
+        try:
+            with open(path) as f:
+                ind = json.load(f).get("learning", {}).get("indicators", {})
+        except Exception:
+            continue
+        if sum(v.get("total", 0) for v in ind.values()) > sum(v.get("total", 0) for v in best_ind.values()):
+            best_ind = ind
 
     # what auto-tune would choose for a fresh account, learning from everybody's prediction bets
     # the shared brain (admin's strategy settings) is what gets tuned, when it exists
@@ -114,6 +157,7 @@ def main(data_dir: str):
         "model": learning["model"],
         "recommended": recommended,
         "changes": changes,
+        "analysis": {"all": analyse(trades, best_ind), "sinceFix": analyse([t for t in trades if (t.get("openTime") or 0) >= tune_since], {})},
         "summary": {
             "trades": len(trades), "wins": wins,
             "winRate": round(100 * wins / len(trades), 1) if trades else None,
@@ -132,7 +176,7 @@ def main(data_dir: str):
     os.replace(tmp, os.path.join(gdir, "collective.json"))
     print(json.dumps({"users": users, "trades": len(trades), "recommended": list(recommended),
                       "up": out["summary"]["byDirection"]["long"], "down": out["summary"]["byDirection"]["short"],
-                      "minConfidence": recommended.get("minConfidence")}))
+                      "minConfidence": recommended.get("minConfidence"), "analysis": out["analysis"]}))
 
 
 if __name__ == "__main__":

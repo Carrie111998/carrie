@@ -4,7 +4,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
 import { applyPatch, defaultSettings, SETTINGS_VERSION, withoutBrain, type BotSettings } from "./settings";
-import { loadBrain, brainSettings, onBrainChange, setLastTuneTrades, updateBrain } from "./brain";
+import { loadBrain, brainSettings, markBrainFix, onBrainChange, setLastTuneTrades, updateBrain } from "./brain";
 import { DATA_DIR, workspaceRoot } from "./paths";
 import { BAW_BIN } from "../prediction";
 
@@ -31,6 +31,28 @@ function communityRecommended(): Partial<BotSettings> {
   return readJson<{ recommended?: Partial<BotSettings> }>(path.join(GLOBAL_DIR, "collective.json"))?.recommended ?? {};
 }
 
+/** Coins, slot time and practice mode copied from the admin to every user (once, v3.0.6). */
+const SYNC_KEYS = ["symbols", "interval", "paperMode", "predictionSymbol"] as const;
+
+function syncUsersToAdmin(adminIds: string[]) {
+  const b = loadBrain();
+  if (b.fixes?.includes("sync-users-v306")) return;
+  const admin = adminIds.map((id) => readJson<Record<string, unknown>>(path.join(userDataDir(id), "settings.json"))).find(Boolean);
+  if (admin) {
+    const patch = Object.fromEntries(SYNC_KEYS.filter((k) => admin[k] !== undefined).map((k) => [k, admin[k]]));
+    const usersDir = path.join(DATA_DIR, "users");
+    for (const id of existsSync(usersDir) ? readdirSync(usersDir) : []) {
+      if (adminIds.includes(id)) continue;
+      const file = path.join(userDataDir(id), "settings.json");
+      const saved = readJson<Record<string, unknown>>(file);
+      if (!saved) continue;
+      writeJson(file, applyPatch(applyPatch(defaultSettings(), saved), patch));
+    }
+    logger.info({ patch }, "Copied the admin's coins, slot time and practice mode to every user");
+  }
+  markBrainFix("sync-users-v306");
+}
+
 /** Create the shared brain from the first admin's settings (only the first time). */
 export function initBrain(adminIds: string[]) {
   loadBrain(() => {
@@ -40,6 +62,7 @@ export function initBrain(adminIds: string[]) {
     }
     return applyPatch(defaultSettings(), communityRecommended());
   });
+  syncUsersToAdmin(adminIds);
 }
 
 /**
@@ -54,7 +77,13 @@ export function runCollective(force = false): Promise<{ applied: number; trades:
         resolve({ applied: 0, trades: 0, message: "Learning update failed" });
         return;
       }
-      logger.info({ result: stdout.trim().slice(0, 300) }, "Community learning updated");
+      let result: unknown = stdout.trim().slice(0, 300);
+      try {
+        result = JSON.parse(stdout.trim().split("\n").pop() ?? "{}"); // includes the trade analysis
+      } catch {
+        /* keep the raw text */
+      }
+      logger.info({ result }, "Community learning updated");
       const col = readJson<{ recommended?: Partial<BotSettings>; changes?: { param: string; from: unknown; to: unknown; reason?: string }[]; summary?: { trades?: number } }>(
         path.join(GLOBAL_DIR, "collective.json"),
       );

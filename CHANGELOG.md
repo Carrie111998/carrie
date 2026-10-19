@@ -2,6 +2,12 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.0.6 — 2026-10-19
+
+- Every bet (practice and real) needs at least **60% confidence**; auto-tune keeps that fixed (admin can change it in the shared brain).
+- Every user's coins, slot time and practice mode copied from the admin once; amounts, limits and wallets stay personal.
+- Community learning logs a full trade analysis (win rate and P&L by confidence, coin, direction, coin+direction, hour, mode, and each indicator's accuracy) to the server log.
+
 ## v3.0.5 — 2026-10-19
 
 - **Practice bets = real bets**: one rule book decides both — clear Up/Down signal, minimum confidence, Down bets allowed, coin/hour not blocked, bets-per-slot cap, at least 20% of the slot left, and the **payout must be at least the minimum (default 1.65×)**. Real bets use Binance's live quote; practice bets use a fair-price estimate (distance from the price to beat, time left and recent volatility, plus a small spread). Real bets additionally respect your wallet limits (daily loss, max open money).
