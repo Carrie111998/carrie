@@ -423,7 +423,7 @@ export default function Settings() {
               <Field label="Take-profit (× ATR, spot)"><Num value={n("tpAtrMult")} onChange={(v) => set("tpAtrMult", v)} step={0.1} /></Field>
               <Field label="Max hold (candles, spot)"><Num value={n("maxHoldCandles")} onChange={(v) => set("maxHoldCandles", v)} /></Field>
             </div>
-            <div className="mt-3"><Toggle label="Allow Down bets / short trades" hint="Auto-tune may switch these off if they lose too often." checked={draft.allowShort} onChange={(v) => set("allowShort", v)} /></div>
+            <div className="mt-3"><Toggle label="Allow Down bets / short trades" hint="Keep on: the bot then bets Down whenever its indicators point down. Auto-tune never switches this off." checked={draft.allowShort} onChange={(v) => set("allowShort", v)} /></div>
           </Panel>
 
           <Panel title="Auto-tune (learns from all users)">

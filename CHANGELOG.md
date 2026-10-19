@@ -2,6 +2,11 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.0.1 — 2026-10-19
+
+- **Fixed "all bets are Up"**: auto-tune could switch *Allow Down bets* off after a run of losing Down bets, and nothing could ever switch it back on (no new Down results arrive while it's off), so the bot only bet Up. Auto-tune no longer switches Down bets off, and the update turns them back on once in the shared brain (logged on the Learning page).
+- Learning page shows how many Up vs Down bets all users have placed and how often each won.
+
 ## v3.0.0 — 2026-10-19 (branch `release/v3.0.0`)
 
 - **One brain, one bot for everyone**: all strategy settings (confidence, filters, indicators and weights, Down bets, auto-tune) live in one shared brain (`data/global/brain.json`). Only the admin can see and change them (Settings → Shared brain, and the Learning page). The first brain is copied from the admin's settings.

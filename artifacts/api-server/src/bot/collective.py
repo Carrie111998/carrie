@@ -102,6 +102,9 @@ def main(data_dir: str):
             "trades": len(trades), "wins": wins,
             "winRate": round(100 * wins / len(trades), 1) if trades else None,
             "byMode": by_mode,
+            # Up vs Down balance, to spot a one-sided bot quickly
+            "byDirection": {d: {"trades": len(x), "wins": sum(1 for t in x if t["result"] == "win")}
+                            for d in ("long", "short") for x in [[t for t in trades if t.get("side") == d]]},
             "lossStudy": learner.loss_study([dict(t, mode="paper") for t in trades[:2000]]),
         },
     }

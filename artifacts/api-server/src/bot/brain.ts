@@ -20,6 +20,8 @@ interface BrainFile {
   /** pooled trade count at the last auto-tune, so it only re-tunes on new evidence */
   lastTuneTrades: number;
   log: TuneEntry[];
+  /** one-time repairs already applied */
+  fixes?: string[];
 }
 
 const FILE = path.join(DATA_DIR, "global", "brain.json");
@@ -48,6 +50,20 @@ export function loadBrain(seed?: () => BotSettings | null): BrainFile {
   }
   // validate through the normal settings rules
   brain.settings = pickBrain(applyPatch(defaultSettings(), brain.settings));
+  // v3.0.1: old auto-tune could switch Down bets off for good (bot then bet Up only) — turn them back on once
+  brain.fixes ??= [];
+  if (!brain.fixes.includes("allow-down-bets")) {
+    brain.fixes.push("allow-down-bets");
+    if (brain.settings.allowShort === false) {
+      brain.settings.allowShort = true;
+      brain.log.unshift({
+        time: Date.now(), source: "admin", by: "v3.0.1 update",
+        changes: [{ param: "allowShort", from: "false", to: "true", reason: "Down bets were switched off by old auto-tune and could never come back on" }],
+      });
+      logger.info("Brain: Down bets switched back on");
+    }
+    save();
+  }
   return brain;
 }
 

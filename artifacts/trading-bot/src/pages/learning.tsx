@@ -119,6 +119,11 @@ export default function Learning() {
               <Stat label="Community win rate" value={fmtPct(L.community.winRate)} />
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
+              {Object.entries(L.community.byDirection ?? {}).map(([k, m]) => (
+                <span key={k} className="rounded bg-primary/10 px-2 py-1 text-primary">
+                  {k === "long" ? "Up" : "Down"} bets: <b>{m.trades}</b>, {fmtPct(m.trades ? (100 * m.wins) / m.trades : null)} won
+                </span>
+              ))}
               {Object.entries(L.community.byMode ?? {}).map(([k, m]) => (
                 <span key={k} className="rounded bg-secondary px-2 py-1">
                   {k.replace("-", " · ")}: <b>{m.trades}</b> trades, {fmtPct(m.trades ? (100 * m.wins) / m.trades : null)} won

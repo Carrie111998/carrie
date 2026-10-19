@@ -923,7 +923,7 @@ class Bot:
             return {"enabled": bool(self.settings.get("useCommunityLearning", True)), "users": 0, "trades": 0}
         sm = col.get("summary", {})
         return {"enabled": True, "users": col.get("users", 0), "trades": sm.get("trades", 0), "winRate": sm.get("winRate"),
-                "updatedAt": col.get("updatedAt"), "byMode": sm.get("byMode", {}), "recommended": col.get("recommended", {}),
+                "updatedAt": col.get("updatedAt"), "byMode": sm.get("byMode", {}), "byDirection": sm.get("byDirection", {}), "recommended": col.get("recommended", {}),
                 "insights": (sm.get("lossStudy") or {}).get("insights", [])[:5]}
 
     def accuracy_score(self, paper: dict, learning: dict) -> Optional[float]:

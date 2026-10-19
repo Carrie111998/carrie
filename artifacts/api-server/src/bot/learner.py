@@ -335,11 +335,9 @@ def autotune(settings: dict, learning: dict, trades: List[dict], now_ms: int) ->
             _change(changes, "blockedHours", settings.get("blockedHours", []), hours, "hours (UTC) with <30% win rate this week")
             patch["blockedHours"] = hours
 
-        dirs = {r["key"]: r for r in _group(week, lambda t: t["side"])}
-        sh, lo = dirs.get("short"), dirs.get("long")
-        if settings.get("allowShort") and sh and sh["trades"] >= 10 and sh["winRate"] < 35 and (not lo or lo["winRate"] >= 45):
-            _change(changes, "allowShort", True, False, f"short trades won only {sh['winRate']}%")
-            patch["allowShort"] = False
+        # Down bets / shorts are never switched off automatically: once off, no new Down results
+        # arrive to switch them back on, so the bot got stuck betting Up only. Direction is the
+        # signal's job; weights and minimum confidence handle accuracy.
 
         reg = {r["key"]: r for r in _group(week, lambda t: t.get("regime"))}
         rng, trd = reg.get("ranging"), reg.get("trending")

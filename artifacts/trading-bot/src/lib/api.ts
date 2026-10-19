@@ -182,6 +182,7 @@ export interface Learning {
     winRate?: number | null;
     updatedAt?: number;
     byMode?: Record<string, { trades: number; wins: number; pnl: number }>;
+    byDirection?: Record<string, { trades: number; wins: number }>;
     recommended?: Record<string, unknown>;
     insights?: string[];
   };
