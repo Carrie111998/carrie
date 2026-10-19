@@ -2,6 +2,12 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.3.1 — 2026-10-19
+
+- **Fixed real bets never being placed** ("current round ends 18:30, not at this slot's close 18:10"): Binance lists each round of a recurring "ETH Up or Down 5m" series as its own market in the detail's timeline. The bot now switches to the round that closes with the current slot instead of the series' newest round.
+- **Bet when a win pays +0.40 or more per 1 USDT** (minimum payout 1.40×, was 1.65×) — also on rounds already running.
+- Minimum confidence back to a fixed 60% (auto-tune had raised it to 82%, blocking every bet); auto-tune can never raise it above 65%.
+
 ## v3.3.0 — 2026-10-19
 
 - **Prediction bets with your Binance API key**: Settings → Connect Binance → Prediction Market → "Connect Prediction with: My API key". Uses Binance's official Prediction Trading REST API (`/sapi/v1/w3w/wallet/prediction/*`) with the API key saved in Settings — no QR sign-in needed. Same bets, quotes, rules and auto-claim as the Agentic Wallet.

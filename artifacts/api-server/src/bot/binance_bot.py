@@ -114,7 +114,7 @@ DEFAULT_SETTINGS = {
     "predictionAutoRedeem": True,
     # learn from every user's settled trades (anonymous pool built by collective.py)
     "useCommunityLearning": True,
-    "minPayout": 1.65,
+    "minPayout": 1.4,
     "minEdge": 0.05,
 }
 
@@ -704,7 +704,18 @@ class Bot:
                 return
             if m.get("needsRoundCheck") or not m["outcomes"] or not pick_outcome(m, sig["direction"]):
                 detail = self.pm.market_detail(m["marketTopicId"])
+                title = m["title"]
                 m = next((x for x in detail if x["marketTopicId"] == m["marketTopicId"]), m)
+                if m.get("endTime") and abs(m["endTime"] - slot["slotEnd"]) > 90_000:
+                    # a recurring series: each round is its own topic, listed in the detail's timeline —
+                    # switch to the round that closes with this slot
+                    rnd = next((x for x in detail + markets if x["marketTopicId"] != m["marketTopicId"] and x.get("endTime")
+                                and abs(x["endTime"] - slot["slotEnd"]) <= 90_000
+                                and (not x["title"] or x["title"] == title)), None)
+                    if rnd:
+                        d2 = self.pm.market_detail(rnd["marketTopicId"])
+                        m = next((x for x in d2 if x["marketTopicId"] == rnd["marketTopicId"]), rnd)
+                        m["title"] = m["title"] or title
             if m.get("endTime") and abs(m["endTime"] - slot["slotEnd"]) > 90_000:
                 raise PredictionError(
                     f"'{m['title']}' current round ends {time.strftime('%H:%M:%S', time.gmtime(m['endTime'] / 1000))} UTC, "

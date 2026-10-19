@@ -314,7 +314,7 @@ def autotune(settings: dict, learning: dict, trades: List[dict], now_ms: int) ->
         cur = settings["minConfidence"]
         if best_t is not None:
             new = int(round(cur + (best_t - cur) * 0.5))
-            new = max(50, min(90, new))
+            new = max(50, min(65, new))  # never tune above 65%: higher bars stopped every bet
             if new != cur:
                 wr = [x for x in recent if (x.get("confidence") or 0) >= best_t]
                 w = sum(1 for x in wr if x["result"] == "win")

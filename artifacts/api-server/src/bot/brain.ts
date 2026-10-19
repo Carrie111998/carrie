@@ -174,6 +174,24 @@ export function loadBrain(seed?: () => BotSettings | null): BrainFile {
     });
     save();
   }
+  // v3.3.1 (admin's choice): bet when a win pays +0.40 or more per 1 USDT (1.40x), 60% confidence fixed
+  // (auto-tune had raised it to 82%, so no bet was placed)
+  if (!brain.fixes.includes("settings-v331")) {
+    brain.fixes.push("settings-v331");
+    const was = { conf: brain.settings.minConfidence, tune: brain.settings.tuneThreshold, pay: brain.settings.minPayout };
+    brain.settings.minConfidence = 60;
+    brain.settings.tuneThreshold = false;
+    brain.settings.minPayout = 1.4;
+    brain.log.unshift({
+      time: Date.now(), source: "admin", by: "v3.3.1 update",
+      changes: [
+        { param: "minPayout", from: String(was.pay), to: "1.4", reason: "admin: bet when the win is +0.40 or more" },
+        { param: "minConfidence", from: String(was.conf), to: "60", reason: "admin: bet at 60%+ (auto-tune had raised it to 82%)" },
+        { param: "tuneThreshold", from: String(was.tune), to: "false", reason: "keep the 60% minimum fixed" },
+      ],
+    });
+    save();
+  }
   return brain;
 }
 

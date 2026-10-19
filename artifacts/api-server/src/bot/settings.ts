@@ -143,7 +143,7 @@ export function defaultSettings(): BotSettings {
     predictionAutoRedeem: true,
     useCommunityLearning: true,
     runDurationMin: 0,
-    minPayout: 1.65,
+    minPayout: 1.4,
     minEdge: 0.05,
     settingsVersion: SETTINGS_VERSION,
   };
