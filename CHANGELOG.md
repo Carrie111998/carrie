@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.2.2 — 2026-10-19
+
+- Prediction slots are 5 or 15 minutes only (1 hour removed); anyone on 1 hour moves to 5 minutes.
+
 ## v3.2.1 — 2026-10-19
 
 - **Fixed bot engine crash during real betting / Find markets**: the Binance `baw` CLI shared the engine's command pipe and could break it, so the engine shut down (and live betting switched off). The CLI now runs without access to it, and the engine no longer treats a temporary pipe read error as shutdown.

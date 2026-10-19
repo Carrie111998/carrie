@@ -6,7 +6,7 @@ export const INDICATOR_KEYS = [
   "obv", "vwap", "supertrend", "ichimoku", "momentum", "linreg", "candles", "volume", "flow", "trend", "ai",
 ] as const;
 
-export const INTERVALS = ["5m", "15m", "1h"] as const;
+export const INTERVALS = ["5m", "15m"] as const;
 /** Coins with Binance Prediction markets the bot trades. */
 export const COINS = ["BTCUSDT", "ETHUSDT", "BNBUSDT"] as const;
 /** How long a started bot keeps running (minutes); 0 = until stopped. */
@@ -238,7 +238,7 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
       if (range && Number.isFinite(num)) next.indicatorParams[k] = k === "bbStd" ? clamp(num, range) : Math.round(clamp(num, range));
     }
   }
-  // only BTC / ETH / BNB, at 5m / 15m / 1h slots
+  // only BTC / ETH / BNB, at 5m / 15m slots
   next.symbols = next.symbols.filter((x) => (COINS as readonly string[]).includes(x));
   if (next.symbols.length === 0) next.symbols = ["BTCUSDT"];
   if (!(INTERVALS as readonly string[]).includes(next.interval)) next.interval = "5m";

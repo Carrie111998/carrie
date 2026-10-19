@@ -1,4 +1,4 @@
-# Binance Predict Bot — v3.2.1
+# Binance Predict Bot — v3.2.2
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed; older versions are archived in [`archive/`](archive/).
 
@@ -44,7 +44,7 @@ The app runs on port **8888** (`docker-compose.yml` also has Traefik labels for 
 
 ## Features
 
-- **One shared brain**: every user's bot runs the same strategy, managed by the admin and auto-tuned from all users' trades. Users only choose coins (BTC/ETH/BNB), slot time (5m/15m/1h), run time, amounts and limits.
+- **One shared brain**: every user's bot runs the same strategy, managed by the admin and auto-tuned from all users' trades. Users only choose coins (BTC/ETH/BNB), slot time (5m/15m), run time, amounts and limits.
 - **Works everywhere**: any browser on phones, tablets, laptops and desktops. On phones it can also be installed to the Home Screen (Chrome menu → Install app, or Safari Share → Add to Home Screen).
 - **Accounts**: a login page opens first. Sign up with a username, email and password, then confirm the 6-digit code sent to your email. You can log in with your username or email, and there is a "Forgot password" option that also uses an email code. Many users can sign up, and **each one gets their own bot, settings, API keys, paper account and trade history** in `data/users/<id>/`. Passwords are hashed with scrypt and sessions last 30 days.
 - **Bet amount**: choose a fixed USD amount per trade (**standard and minimum is $1**, with quick picks $1/$2/$5/$10/$25/$50) or a % of the paper balance. Live orders have their own size. Binance rejects orders under about 5 USDT on most pairs, so live defaults to $5.

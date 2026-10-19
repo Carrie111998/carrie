@@ -11,7 +11,7 @@ export interface IndicatorConfig {
 
 export interface BotSettings {
   symbols: string[];
-  interval: "5m" | "15m" | "1h";
+  interval: "5m" | "15m";
   scanIntervalSec: number;
   predictionHorizon: number;
   minConfidence: number;
