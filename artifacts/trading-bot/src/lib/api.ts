@@ -51,6 +51,7 @@ export interface BotSettings {
   useCommunityLearning: boolean;
   runDurationMin: number;
   minPayout: number;
+  minEdge: number;
   settingsVersion: number;
 }
 

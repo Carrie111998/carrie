@@ -112,6 +112,7 @@ DEFAULT_SETTINGS = {
     # learn from every user's settled trades (anonymous pool built by collective.py)
     "useCommunityLearning": True,
     "minPayout": 1.65,
+    "minEdge": 0.05,
 }
 
 
@@ -370,6 +371,18 @@ class Bot:
         p = p_up if sig["direction"] == "long" else 1 - p_up
         return min(0.97, max(0.03, p + PRACTICE_SPREAD))
 
+    def price_blockers(self, sig: dict, price: float) -> List[str]:
+        """Same for practice and real: the payout must reach the minimum, and the bot's win
+        estimate (confidence) must beat the share price by the minimum edge."""
+        s = self.settings
+        payout = 1 / price
+        if payout < s["minPayout"]:
+            return [f"payout {payout:.2f}x < {s['minPayout']:g}x"]
+        edge = sig["confidence"] / 100 - price
+        if edge < s["minEdge"]:
+            return [f"edge {edge * 100:.0f}% < {s['minEdge'] * 100:.0f}% (conf {sig['confidence']:.0f}% vs price {price:.2f})"]
+        return []
+
     def slot_bets_placed(self, slot_start: int, live: bool) -> int:
         if live:
             return sum(1 for b in self.data["predictionBets"] if b["slotStart"] == slot_start and b["status"] in ("placed", "dry_run"))
@@ -401,12 +414,12 @@ class Bot:
         if self.slot_bets_placed(slot["slotStart"], live=False) >= s["maxOpenPositions"]:
             blockers = blockers + ["max bets per slot reached"]
         price = self.fair_share_price(sig, slot) if not blockers else None
-        payout = 1 / price if price else None
-        if payout is not None and payout < s["minPayout"]:
-            blockers = [f"payout {payout:.2f}x < {s['minPayout']:g}x"]
+        if price is not None:
+            blockers = self.price_blockers(sig, price)
         if blockers:
             slot["paperWait"] = blockers[0]
             return
+        payout = 1 / price
         bal = self.data["paper"]["balance"]
         amount = max(1.0, float(s.get("paperTradeAmountUsdt", 1.5)))  # same size every slot, win or lose
         if amount > bal:
@@ -425,7 +438,7 @@ class Bot:
         slot.pop("paperWait", None)
         left = int((slot["slotEnd"] - now_ms()) / 1000)
         log(f"PAPER bet {'UP' if sig['direction'] == 'long' else 'DOWN'} {sym} {amount:g} USDT @ {price:.2f} "
-            f"(payout {payout:.2f}x, beat {slot['open']:.6g}, now {sig['price']:.6g}, conf {sig['confidence']:.0f}%, {left // 60}m{left % 60:02d}s left)")
+            f"(payout {payout:.2f}x, edge {(sig['confidence'] / 100 - price) * 100:.0f}%, beat {slot['open']:.6g}, now {sig['price']:.6g}, conf {sig['confidence']:.0f}%, {left // 60}m{left % 60:02d}s left)")
 
     def log_new_slots(self, new_slots: List[tuple]):
         if not new_slots:
@@ -680,8 +693,9 @@ class Bot:
             q = self.pm.quote(m, outcome, amount)
             shares = float(q.get("amountOut") or 0)
             payout = shares / amount if amount else 0.0  # each winning share pays 1 USDT
-            if payout < s["minPayout"]:
-                slot["liveWait"] = f"payout {payout:.2f}x < {s['minPayout']:g}x"
+            why = self.price_blockers(sig, 1 / payout) if payout > 0 else ["no quote"]
+            if why:
+                slot["liveWait"] = why[0]
                 return  # wait: check again next scan
             bet.update(marketTopicId=m["marketTopicId"], marketTitle=m["title"], outcome=outcome["label"], tokenId=outcome["tokenId"],
                        shares=shares, avgPrice=q.get("averagePrice"), fee=q.get("feeAmount"), payout=round(payout, 3))

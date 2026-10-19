@@ -3,7 +3,7 @@
 
 export const INDICATOR_KEYS = [
   "rsi", "macd", "bollinger", "ema", "stochastic", "adx", "cci", "williams", "mfi",
-  "obv", "vwap", "supertrend", "ichimoku", "momentum", "linreg", "candles", "volume", "trend", "ai",
+  "obv", "vwap", "supertrend", "ichimoku", "momentum", "linreg", "candles", "volume", "flow", "trend", "ai",
 ] as const;
 
 export const INTERVALS = ["5m", "15m", "1h"] as const;
@@ -60,6 +60,8 @@ export interface BotSettings {
   runDurationMin: number;
   /** only bet when a winning bet pays at least this many times the stake (e.g. 1.65×) */
   minPayout: number;
+  /** only bet when confidence beats the share price by this much (0.05 = 5 points) */
+  minEdge: number;
   /** schema version of this settings file; bumped when defaults change for everyone */
   settingsVersion: number;
 }
@@ -72,7 +74,7 @@ export const SETTINGS_VERSION = 3;
  * each user's own basic setup (coins, slot time, amounts, limits, paper/live).
  */
 export const BRAIN_KEYS = [
-  "scanIntervalSec", "predictionHorizon", "minConfidence", "maxOpenPositions", "paperPredictionPrice", "minPayout",
+  "scanIntervalSec", "predictionHorizon", "minConfidence", "maxOpenPositions", "paperPredictionPrice", "minPayout", "minEdge",
   "allowShort", "slAtrMult", "tpAtrMult", "maxHoldCandles", "minAdx", "feePct", "indicators", "indicatorParams",
   "autoTune", "autoTuneEvery", "tuneWeights", "tuneThreshold", "tuneRisk", "tuneFilters", "blockedSymbols", "blockedHours",
 ] as const satisfies readonly (keyof BotSettings)[];
@@ -136,6 +138,7 @@ export function defaultSettings(): BotSettings {
     useCommunityLearning: true,
     runDurationMin: 0,
     minPayout: 1.65,
+    minEdge: 0.05,
     settingsVersion: SETTINGS_VERSION,
   };
 }
@@ -162,6 +165,7 @@ const BOUNDS: Record<string, [number, number]> = {
   predictionBetUsdt: [1, 100_000],
   predictionMaxExposureUsdt: [1, 1_000_000],
   minPayout: [1.05, 10],
+  minEdge: [0, 0.5],
 };
 
 const PARAM_BOUNDS: Record<string, [number, number]> = {

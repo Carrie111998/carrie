@@ -52,8 +52,10 @@ def _http(method: str, url: str, headers: Optional[dict] = None, timeout: float 
 
 
 def klines_to_arrays(rows: list) -> Dict[str, np.ndarray]:
-    a = np.array([[float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[0])] for r in rows])
-    return {"open": a[:, 0], "high": a[:, 1], "low": a[:, 2], "close": a[:, 3], "volume": a[:, 4], "time": a[:, 5]}
+    # r[9] = taker buy base volume (aggressive buyers) — used by the order-flow indicator
+    a = np.array([[float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[0]),
+                   float(r[9]) if len(r) > 9 else float(r[5]) / 2] for r in rows])
+    return {"open": a[:, 0], "high": a[:, 1], "low": a[:, 2], "close": a[:, 3], "volume": a[:, 4], "time": a[:, 5], "taker": a[:, 6]}
 
 
 INTERVAL_SECONDS = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400}
@@ -138,7 +140,10 @@ class SimulatedMarket:
 
     def klines(self, symbol: str, interval: str, limit: int = 300):
         a = np.array(self._ensure(symbol, interval, max(limit, 300))[-limit:])
-        return {"open": a[:, 0], "high": a[:, 1], "low": a[:, 2], "close": a[:, 3], "volume": a[:, 4], "time": a[:, 5]}
+        # simulated taker buys lean with the candle's direction
+        up = np.sign(a[:, 3] - a[:, 0])
+        taker = a[:, 4] * np.clip(0.5 + 0.15 * up + np.sin(a[:, 5] / 7e5) * 0.05, 0.05, 0.95)
+        return {"open": a[:, 0], "high": a[:, 1], "low": a[:, 2], "close": a[:, 3], "volume": a[:, 4], "time": a[:, 5], "taker": taker}
 
     def klines_range(self, symbol: str, interval: str, total: int):
         return self.klines(symbol, interval, min(total, 1500)) if total <= 1500 else self.klines(symbol, interval, 1500)

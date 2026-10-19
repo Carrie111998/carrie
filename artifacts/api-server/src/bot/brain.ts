@@ -120,6 +120,26 @@ export function loadBrain(seed?: () => BotSettings | null): BrainFile {
     brain.log.unshift({ time: Date.now(), source: "admin", by: "v3.0.7 trade analysis", changes });
     save();
   }
+  // v3.1.0 (research): honest confidence scale (50 = coin flip), new order-flow indicator, and an
+  // edge rule — bet only when the win estimate beats the share price by 5 points
+  if (!brain.fixes.includes("edge-v310")) {
+    brain.fixes.push("edge-v310");
+    const inds = (brain.settings.indicators ?? {}) as Record<string, { enabled: boolean; weight: number }>;
+    inds["flow"] = { enabled: true, weight: 1.5 };
+    brain.settings.indicators = inds as BotSettings["indicators"];
+    brain.settings.minConfidence = 60;
+    brain.settings.minEdge = 0.05;
+    brain.settings.minPayout = brain.settings.minPayout ?? 1.65;
+    brain.log.unshift({
+      time: Date.now(), source: "admin", by: "v3.1.0 research update",
+      changes: [
+        { param: "weight.flow", from: "-", to: "1.5", reason: "new order-flow indicator (taker buy/sell imbalance)" },
+        { param: "minConfidence", from: "-", to: "60", reason: "confidence now 50 = coin flip, so 60 = a real lean" },
+        { param: "minEdge", from: "-", to: "0.05", reason: "bet only when the win estimate beats the share price by 5 points" },
+      ],
+    });
+    save();
+  }
   return brain;
 }
 

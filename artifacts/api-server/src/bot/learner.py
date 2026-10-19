@@ -134,7 +134,8 @@ def combine(votes: Dict[str, float], weights: Dict[str, float]) -> Tuple[int, fl
     agree = sum(weights.get(k, 1.0) * abs(v) for k, v in votes.items() if (v > 0) == (direction > 0) and v != 0)
     agreement = agree / mag                      # 0.5..1  how much of the evidence agrees
     strength = min(1.0, abs(score) / 0.35)       # 0..1    how strong the combined push is
-    confidence = 100 * (0.6 * agreement + 0.4 * strength)
+    # 50 = coin flip (indicators split, no push), 100 = everything agrees strongly
+    confidence = 50 + 50 * (0.6 * (2 * agreement - 1) + 0.4 * strength)
     return direction, round(confidence, 1), round(score, 4)
 
 

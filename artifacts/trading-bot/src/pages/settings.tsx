@@ -412,13 +412,16 @@ export default function Settings() {
 
           <Panel title="Strategy">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Minimum confidence %" hint="Only bet at or above this."><Num value={n("minConfidence")} onChange={(v) => set("minConfidence", v)} min={50} max={95} /></Field>
+              <Field label="Minimum confidence %" hint="50 = coin flip. Only bet at or above this."><Num value={n("minConfidence")} onChange={(v) => set("minConfidence", v)} min={50} max={95} /></Field>
               <Field label="Minimum ADX (trend filter)" hint="0 = off."><Num value={n("minAdx")} onChange={(v) => set("minAdx", v)} min={0} max={60} /></Field>
               <Field label="Scan every (seconds)"><Num value={n("scanIntervalSec")} onChange={(v) => set("scanIntervalSec", v)} min={10} /></Field>
               <Field label="Prediction horizon (candles)"><Num value={n("predictionHorizon")} onChange={(v) => set("predictionHorizon", v)} min={1} /></Field>
               <Field label="Max bets / positions per round"><Num value={n("maxOpenPositions")} onChange={(v) => set("maxOpenPositions", v)} /></Field>
               <Field label="Minimum payout (×)" hint="Bet only when a win pays at least this × the stake (1.65 = $1 returns $1.65). Same rule for practice and real bets; checked all through the slot.">
                 <Num value={n("minPayout")} onChange={(v) => set("minPayout", v)} step={0.05} min={1.05} max={10} />
+              </Field>
+              <Field label="Minimum edge (%)" hint="Bet only when confidence beats the share price by this many points (e.g. 60% confidence vs 0.52 price = 8-point edge). Same for practice and real.">
+                <Num value={Math.round(n("minEdge") * 100)} onChange={(v) => set("minEdge", v / 100)} step={1} min={0} max={50} />
               </Field>
               <Field label="Fee %"><Num value={n("feePct")} onChange={(v) => set("feePct", v)} step={0.01} /></Field>
               <Field label="Stop-loss (× ATR, spot)"><Num value={n("slAtrMult")} onChange={(v) => set("slAtrMult", v)} step={0.1} /></Field>

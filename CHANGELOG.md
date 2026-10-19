@@ -2,6 +2,13 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.1.0 — 2026-10-19 (branch `release/v3.1.0`)
+
+Research-based betting rules (5-minute crypto Up/Down markets are close to random and bot-dominated; the edge comes from comparing your win estimate with the executable price and from order flow):
+- **Order-flow indicator** (new, weight 1.5): taker buy vs. sell imbalance of the last 3 candles against its usual level, from Binance kline taker volume.
+- **Honest confidence scale**: 50% = coin flip, 100% = everything agrees strongly (before, a coin flip showed ~30%, so 60% was almost never reached and almost no bets were placed).
+- **Edge rule** (new admin setting *Minimum edge*, default 5 points): bet only when confidence beats the share price by at least 5 points, e.g. 60% vs. a 0.52 share. Same for practice and real bets, together with the 1.65× minimum payout and the 60% minimum confidence.
+
 ## v3.0.7 — 2026-10-19
 
 - Indicator weights set from the analysis of all 103 settled trades: on 5-minute slots the "snap-back" indicators won most (Bollinger 58%, Stochastic 56%, AI 55%, Williams %R 54%) and trend followers lost (OBV 39%, CCI 42%, MACD/Momentum 43%), so the former now count up to 1.8× and the latter 0.3–0.6×. Auto-tune keeps refining weights from new trades.

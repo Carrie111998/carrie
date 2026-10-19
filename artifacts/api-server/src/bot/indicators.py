@@ -291,6 +291,18 @@ def vote_volume(c, p):
     return _clip(np.sign(c["close"][-1] - c["open"][-1]) * min(1.0, ratio - 1))
 
 
+def vote_flow(c, p):
+    """Order flow: share of volume bought by aggressive (taker) buyers in the last 3 candles,
+    against its usual level. More taker buying than usual → Up, more selling → Down."""
+    if "taker" not in c:
+        return 0.0
+    v, t = c["volume"], c["taker"]
+    ratio = (t + EPS) / (v + 2 * EPS)  # 0..1, 0.5 = balanced
+    recent = ratio[-3:].mean()
+    base, sd = ratio[-60:-3].mean(), ratio[-60:-3].std() + 0.01
+    return _clip(math.tanh((recent - base) / (2 * sd)))
+
+
 def vote_trend(c, p):
     cl = c["close"]
     e = ema(cl, 100)
@@ -317,6 +329,7 @@ INDICATORS: Dict[str, tuple] = {
     "linreg": ("Linear Regression Forecast", "prediction", vote_linreg),
     "candles": ("Candlestick Patterns", "pattern", vote_candles),
     "volume": ("Volume Spike", "volume", vote_volume),
+    "flow": ("Order Flow (taker buy/sell)", "volume", vote_flow),
     "trend": ("EMA-100 Trend", "trend", vote_trend),
 }
 
