@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -337,8 +338,15 @@ class Bot:
         """Bet on the slots that opened this cycle: best confidence first, up to maxOpenPositions per slot."""
         s = self.settings
         placed = 0
+        skipped: Dict[str, int] = {}
         for sym, slot, sig in sorted(new_slots, key=lambda x: -x[2]["confidence"]):
-            if placed >= s["maxOpenPositions"] or self.prediction_blockers(sig):
+            blockers = self.prediction_blockers(sig)
+            if placed >= s["maxOpenPositions"]:
+                blockers = blockers or ["max bets per slot reached"]
+            if blockers:
+                # group "confidence 61% < 78%" style reasons so the summary stays short
+                key = re.sub(r"\d+%? <", "<", blockers[0])
+                skipped[key] = skipped.get(key, 0) + 1
                 continue
             if any(p["symbol"] == sym and p.get("kind") == "prediction" for p in self.positions("paper")):
                 continue
@@ -360,6 +368,10 @@ class Bot:
             placed += 1
             log(f"PAPER bet {'UP' if sig['direction'] == 'long' else 'DOWN'} {sym} {amount:g} USDT @ {price:.2f} "
                 f"(beat {slot['open']:.6g}, conf {sig['confidence']:.0f}%)")
+        if new_slots:
+            why = ", ".join(f"{k} ×{v}" for k, v in sorted(skipped.items(), key=lambda x: -x[1]))
+            log(f"Slot {time.strftime('%H:%M', time.gmtime(new_slots[0][1]['slotStart'] / 1000))} UTC: {placed} paper bet(s) placed"
+                + (f", {sum(skipped.values())} skipped ({why})" if skipped else ""), "slot")
 
     def settle_paper_prediction(self, sym: str, slot: dict):
         pos = next((p for p in self.positions("paper") if p.get("kind") == "prediction" and p["symbol"] == sym
