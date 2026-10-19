@@ -397,6 +397,10 @@ importers:
         version: 3.25.76
 
   artifacts/trading-bot:
+    dependencies:
+      qrcode:
+        specifier: 1.5.4
+        version: 1.5.4
     devDependencies:
       '@hookform/resolvers':
         specifier: ^3.10.0
@@ -503,6 +507,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.4
+      '@types/qrcode':
+        specifier: 1.5.5
+        version: 1.5.5
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.17
@@ -1511,6 +1518,9 @@ packages:
 
   '@types/nodemailer@6.4.24':
     resolution: {integrity: sha512-Ww4u0rT9wQNXh4JiQaIwx3QWdcOFXzOjQA2zc+jtFYNmQiT4mIUqcDin51bDFdkzKubFnQCZNK7FIHlPKQ/q9w==}
+
+  '@types/qrcode@1.5.5':
+    resolution: {integrity: sha512-CdfBi/e3Qk+3Z/fXYShipBT13OJ2fDO2Q2w5CIP5anLTLIndQG9z6P1cnm+8zCWSpm5dnxMFd/uREtb0EXuQzg==}
 
   '@types/qs@6.15.1':
     resolution: {integrity: sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw==}
@@ -3782,6 +3792,10 @@ snapshots:
       undici-types: 7.24.6
 
   '@types/nodemailer@6.4.24':
+    dependencies:
+      '@types/node': 25.9.4
+
+  '@types/qrcode@1.5.5':
     dependencies:
       '@types/node': 25.9.4
 

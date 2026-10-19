@@ -839,8 +839,14 @@ class Bot:
             if self.data_dir:
                 self.pm = PredictionClient(os.environ.get("BINANCE_BAW_DIR") or os.path.join(self.data_dir, "baw"))
         elif cmd == "settings":
+            old_venue = self.settings.get("liveVenue")
             self.settings = merge_settings(DEFAULT_SETTINGS, msg.get("settings") or {})
             self.signals = {k: v for k, v in self.signals.items() if k in self.settings["symbols"]}
+            if self.live_enabled and old_venue != self.settings.get("liveVenue"):
+                # never carry a live session across venues — switch it on again deliberately
+                self.live_enabled = False
+                self.live_account = None
+                log("Live trading OFF: connection method changed", "trade")
             self.study_cache = None
         elif cmd == "credentials":
             self.credentials = msg.get("credentials") or {}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, LogOut, RefreshCw, Search, Wallet } from "lucide-react";
+import { ExternalLink, LogOut, RefreshCw, Search, Smartphone, Wallet } from "lucide-react";
+import QRCode from "qrcode";
 import { useBot } from "@/hooks/useBot";
 import { api, type MarketSearch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,16 @@ import { cn } from "@/lib/utils";
 interface WalletInfo {
   status: string;
   signin: { state: "waiting" | "success" | "failed"; pairingCode?: string; url?: string; expireAt?: number; error?: string } | null;
+}
+
+/** The sign-in link as a QR code — the same payload Binance's own CLI renders. */
+function SigninQr({ url }: { url: string }) {
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    QRCode.toDataURL(url, { width: 240, margin: 2, errorCorrectionLevel: "M" }).then(setSrc).catch(() => setSrc(""));
+  }, [url]);
+  if (!src) return null;
+  return <img src={src} alt="QR code to sign in with the Binance App" width={240} height={240} className="rounded-md bg-white p-1" />;
 }
 
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -53,20 +64,33 @@ export function PredictionWallet() {
         )}
       </div>
 
-      {waiting && info?.signin && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm space-y-2">
-          <div>
-            1. Open this link on your phone (it opens the Binance App) or scan its QR code with the Binance App:
-          </div>
-          <a href={info.signin.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 break-all text-primary underline">
-            Open Binance sign-in <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-          <div>
-            2. Check the pairing code matches and confirm:{" "}
-            <b className="font-mono text-lg tracking-widest text-foreground">{info.signin.pairingCode}</b>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            Waiting for confirmation… {info.signin.expireAt ? `Code expires at ${hhmm(info.signin.expireAt)}.` : ""}
+      {waiting && info?.signin?.url && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+          <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+            <SigninQr url={info.signin.url} />
+            <div className="space-y-2">
+              <div>
+                <b>On a computer:</b> open the Binance App on your phone → tap the scan icon (top left) → scan this QR code.
+              </div>
+              <div>
+                <b>On your phone:</b> tap the button to open the Binance App directly.
+              </div>
+              <a
+                href={info.signin.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md bg-amber-500 px-3 py-2 font-semibold text-black"
+              >
+                <Smartphone className="h-4 w-4" /> Open in Binance App <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+              <div>
+                Then check the pairing code matches and confirm:{" "}
+                <b className="font-mono text-lg tracking-widest text-foreground">{info.signin.pairingCode}</b>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Waiting for confirmation… {info.signin.expireAt ? `QR code expires at ${hhmm(info.signin.expireAt)}.` : ""}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -87,7 +111,7 @@ export function PredictionWallet() {
               setBusy(false);
             }}
           >
-            <Wallet className="h-4 w-4 mr-1.5" /> {waiting ? "Get a new code" : "Connect Binance Agentic Wallet"}
+            <Wallet className="h-4 w-4 mr-1.5" /> {waiting ? "Get a new QR code" : "Show QR code to connect"}
           </Button>
         ) : (
           <>

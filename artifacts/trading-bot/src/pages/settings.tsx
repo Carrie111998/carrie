@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Eye, EyeOff, KeyRound, Save, ShieldAlert, Trash2 } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Link2, QrCode, Save, ShieldAlert, Trash2 } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
 import { api, type BotSettings, type CredentialInfo, type LiveAccount } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -118,7 +118,7 @@ function ApiKeys() {
   }
 
   return (
-    <Panel title={<span className="flex items-center gap-2"><KeyRound className="h-4 w-4 text-amber-400" /> Binance Spot API keys</span>}>
+    <div>
       <div className="space-y-4">
         <div className="rounded-md bg-secondary/60 px-3 py-2 text-xs space-y-1">
           <div>
@@ -187,7 +187,7 @@ function ApiKeys() {
           on the server only (data/credentials.json) and are never sent back to the browser.
         </p>
       </div>
-    </Panel>
+    </div>
   );
 }
 
@@ -238,32 +238,45 @@ export default function Settings() {
         </div>
       </div>
 
-      <Panel title="Live trading venue">
-        <div className="grid gap-3 sm:grid-cols-2">
+      <Panel title={<span className="flex items-center gap-2"><Link2 className="h-4 w-4 text-amber-400" /> Connect Binance</span>}>
+        <div role="tablist" className="mb-4 grid grid-cols-2 gap-2">
           {([
-            ["prediction", "Binance Prediction Market", "Bets Up/Down on each slot from your Binance Agentic Wallet (USDT on BSC). No API key."],
-            ["spot", "Binance Spot", "Buys and sells coins on Binance Spot with an API key and secret."],
-          ] as const).map(([v, title, hint]) => (
+            ["prediction", QrCode, "Scan QR code", "Binance Agentic Wallet → Prediction Market bets (USDT on BSC)"],
+            ["spot", KeyRound, "API key", "Binance Spot account → buy/sell coins"],
+          ] as const).map(([v, Icon, title, hint]) => (
             <button
               key={v}
+              role="tab"
               type="button"
-              onClick={() => set("liveVenue", v)}
+              aria-selected={draft.liveVenue === v}
+              onClick={() => {
+                if (draft.liveVenue === v) return;
+                // switching method switches the live venue right away
+                setDraft({ ...draft, liveVenue: v });
+                saveSettings({ liveVenue: v });
+              }}
               className={`rounded-md border p-3 text-left ${draft.liveVenue === v ? "border-primary bg-primary/10" : "border-border"}`}
             >
-              <div className="text-sm font-semibold">{title}</div>
-              <div className="text-[11px] text-muted-foreground">{hint}</div>
+              <div className="flex items-center gap-2 text-sm font-semibold"><Icon className="h-4 w-4" /> {title}</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>
             </button>
           ))}
         </div>
-        {dirty && draft.liveVenue !== settings?.liveVenue && (
-          <p className="mt-2 text-xs text-amber-300">Tap Save settings to switch venue.</p>
+        {draft.liveVenue === "prediction" ? (
+          <>
+            <PredictionWallet />
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              The Prediction Market wallet can only be connected by QR code — Binance doesn't offer API keys for it. Use the API key tab for Spot trading.
+            </p>
+          </>
+        ) : (
+          <ApiKeys />
         )}
       </Panel>
 
       {draft.liveVenue === "prediction" ? (
-        <Panel title="Binance Prediction Market">
+        <Panel title="Prediction Market betting">
           <div className="space-y-5">
-            <PredictionWallet />
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Bet on pair" hint="The bot bets on this pair's Up/Down slot market.">
                 <select
@@ -307,9 +320,7 @@ export default function Settings() {
             </div>
           </div>
         </Panel>
-      ) : (
-        <ApiKeys />
-      )}
+      ) : null}
 
       <Panel title="Markets & prediction">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
