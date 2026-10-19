@@ -47,3 +47,6 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Bot runtime data (trades, learning, API keys) — never commit
+/data/

@@ -2,7 +2,7 @@ import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { setupWebSocket } from "./bot/websocket";
-import { botState } from "./bot/state";
+import { engine } from "./bot/engine";
 
 const rawPort = process.env["PORT"];
 
@@ -22,8 +22,7 @@ const server = createServer(app);
 
 setupWebSocket(server);
 
-// Pre-spawn the Python bot process so it's ready
-botState.ensureProcess();
+engine.start();
 
 server.listen(port, (err?: Error) => {
   if (err) {

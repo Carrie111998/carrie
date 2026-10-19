@@ -1,628 +1,342 @@
-import { useState, useEffect } from "react";
-import { useGetSettings, useUpdateSettings, type BotSettings } from "@workspace/api-client-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Eye, EyeOff, KeyRound, Save, ShieldAlert, Trash2 } from "lucide-react";
+import { useBot } from "@/hooks/useBot";
+import { api, type BotSettings, type CredentialInfo, type LiveAccount } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Panel, fmtUsd } from "@/components/bits";
 import { useToast } from "@/hooks/use-toast";
-import { RefreshCw, Save, Brain, CheckSquare, Square } from "lucide-react";
-import { cn } from "@/lib/utils";
 
-type FormState = {
-  tradeTime: number;
-  tradeAmount: number;
-  tradeAmountType: string;
-  maxActiveTrades: number;
-  riskLevel: string;
-  balanceType: string;
-  marketCategories: string[];
-  tradingMode: string;
-  enableRsi: boolean;
-  enableMacd: boolean;
-  enableBollinger: boolean;
-  enableEma: boolean;
-  enableVolume: boolean;
-  rsiWeight: number;
-  macdWeight: number;
-  bollingerWeight: number;
-  emaWeight: number;
-  volumeWeight: number;
-  enableFinnhub: boolean;
-  finnhubWeight: number;
-  enableTwelveData: boolean;
-  twelveDataWeight: number;
-  enableGemini: boolean;
-  geminiWeight: number;
-  enableAlpaca: boolean;
-  alpacaWeight: number;
-  rsiPeriod: number;
-  rsiOversold: number;
-  rsiOverbought: number;
-  macdFast: number;
-  macdSlow: number;
-  macdSignal: number;
-  bollingerPeriod: number;
-  bollingerStdDev: number;
-  emaFast: number;
-  emaSlow: number;
-};
+const INTERVALS: BotSettings["interval"][] = ["1m", "3m", "5m", "15m", "30m", "1h", "4h"];
 
-const CATEGORIES = [
-  { key: "otc", label: "OTC", desc: "OTC markets (3s/5s/10s)" },
-  { key: "forex", label: "Forex", desc: "Major & minor currency pairs" },
-  { key: "crypto", label: "Crypto", desc: "BTC, ETH, LTC" },
-  { key: "stocks", label: "Stocks", desc: "AAPL, MSFT, TSLA, AMZN" },
-  { key: "indices", label: "Indices", desc: "DJI30, Nikkei, ASX200" },
-];
-
-function WeightInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-1.5 w-24">
-      <Input
-        type="number"
-        min={0}
-        max={100}
-        value={value}
-        onChange={(e) => onChange(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-        className="bg-slate-800 border-slate-600 text-white text-xs h-7 w-16 text-center"
-      />
-      <span className="text-xs text-slate-500">%</span>
+    <div className="space-y-1.5 min-w-0">
+      <Label className="text-xs">{label}</Label>
+      {children}
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
 
-function ParamInput({
-  label, value, onChange, min, max, step = 1,
-}: {
-  label: string; value: number; onChange: (v: number) => void;
-  min: number; max: number; step?: number;
-}) {
+function Num({ value, onChange, step = 1, min, max }: { value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-slate-400 text-xs">{label}</Label>
-      <Input
-        type="number"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => {
-          const n = step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value);
-          if (isNaN(n)) return onChange(min);
-          onChange(Math.min(max, Math.max(min, n)));
-        }}
-        className="bg-slate-800 border-slate-600 text-white text-sm h-8"
-      />
-    </div>
+    <Input
+      type="number"
+      inputMode="decimal"
+      value={Number.isFinite(value) ? value : ""}
+      step={step}
+      min={min}
+      max={max}
+      onChange={(e) => onChange(e.target.value === "" ? NaN : Number(e.target.value))}
+    />
   );
 }
 
-function MethodRow({
-  enabled, onToggle, label, desc, weight, onWeightChange,
-}: {
-  enabled: boolean; onToggle: (v: boolean) => void;
-  label: string; desc: string;
-  weight: number; onWeightChange: (v: number) => void;
-}) {
+function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-slate-800 last:border-0">
-      <div className="flex-1 min-w-0 mr-3">
-        <div className="text-sm text-white font-medium">{label}</div>
-        <div className="text-xs text-slate-500 truncate">{desc}</div>
-      </div>
-      <div className="flex items-center gap-3 flex-shrink-0">
-        {enabled && <WeightInput value={weight} onChange={onWeightChange} />}
-        <Switch
-          checked={enabled}
-          onCheckedChange={onToggle}
-          className="data-[state=checked]:bg-emerald-600"
+    <label className="flex items-start justify-between gap-3 py-1">
+      <span>
+        <span className="text-sm">{label}</span>
+        {hint && <span className="block text-[11px] text-muted-foreground">{hint}</span>}
+      </span>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </label>
+  );
+}
+
+function ApiKeys() {
+  const { run, state } = useBot();
+  const { toast } = useToast();
+  const [info, setInfo] = useState<CredentialInfo | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
+  const [testnet, setTestnet] = useState(true);
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const acct = state?.status?.liveAccount;
+
+  useEffect(() => {
+    api<CredentialInfo>("/credentials").then((i) => { setInfo(i); setTestnet(i.testnet); }).catch(() => {});
+  }, []);
+
+  const report = (r: LiveAccount) =>
+    toast(
+      r.ok
+        ? { title: "Connected to Binance", description: `${r.testnet ? "Testnet" : "Live"} account · ${fmtUsd(r.usdt)} USDT free` }
+        : { title: "Binance check failed", description: r.error, variant: "destructive" },
+    );
+
+  async function save() {
+    setBusy(true);
+    await run("Could not save API keys", async () => {
+      report(await api<LiveAccount>("/credentials", { method: "POST", body: { apiKey, apiSecret, testnet } }));
+      setInfo(await api<CredentialInfo>("/credentials"));
+      setApiKey("");
+      setApiSecret("");
+    });
+    setBusy(false);
+  }
+
+  return (
+    <Panel title={<span className="flex items-center gap-2"><KeyRound className="h-4 w-4 text-amber-400" /> Binance API</span>}>
+      <div className="space-y-4">
+        <div className="rounded-md bg-secondary/60 px-3 py-2 text-xs space-y-1">
+          <div>
+            Status:{" "}
+            {info?.hasCredentials ? (
+              <b className="text-emerald-400">key {info.keyPreview} saved ({info.testnet ? "testnet" : "LIVE"})</b>
+            ) : (
+              <b className="text-muted-foreground">no key saved</b>
+            )}
+          </div>
+          {acct && <div>Last check: {acct.ok ? `OK · ${fmtUsd(acct.usdt)} USDT free${acct.canTrade ? "" : " · trading NOT permitted"}` : acct.error}</div>}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="API key">
+            <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={info?.hasCredentials ? "Enter to replace saved key" : "Binance API key"} autoComplete="off" spellCheck={false} />
+          </Field>
+          <Field label="API secret key">
+            <div className="flex gap-2">
+              <Input
+                type={show ? "text" : "password"}
+                value={apiSecret}
+                onChange={(e) => setApiSecret(e.target.value)}
+                placeholder="Binance secret key"
+                autoComplete="new-password"
+                spellCheck={false}
+              />
+              <Button type="button" size="icon" variant="ghost" onClick={() => setShow(!show)} aria-label={show ? "Hide secret" : "Show secret"}>
+                {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </div>
+          </Field>
+        </div>
+        <Toggle
+          label="Use Binance Spot Testnet"
+          hint="Recommended first. Create free testnet keys at testnet.binance.vision. Turn off only for real-money trading."
+          checked={testnet}
+          onChange={setTestnet}
         />
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={save} disabled={busy || !apiKey || !apiSecret}>
+            <Save className="h-4 w-4 mr-1.5" /> Save & test keys
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={busy || !info?.hasCredentials}
+            onClick={async () => {
+              setBusy(true);
+              await run("Test failed", async () => report(await api<LiveAccount>("/credentials/test", { method: "POST" })));
+              setBusy(false);
+            }}
+          >
+            Test connection
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-red-400"
+            disabled={!info?.hasCredentials}
+            onClick={() => run("Could not delete keys", async () => setInfo(await api<CredentialInfo>("/credentials", { method: "DELETE" })))}
+          >
+            <Trash2 className="h-4 w-4 mr-1.5" /> Delete keys
+          </Button>
+        </div>
+        <p className="text-[11px] text-muted-foreground flex gap-1.5">
+          <ShieldAlert className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+          Create keys with only "Enable Spot & Margin Trading" — never enable withdrawals — and restrict them to your server's IP. Keys are stored
+          on the server only (data/credentials.json) and are never sent back to the browser.
+        </p>
       </div>
-    </div>
+    </Panel>
   );
 }
 
 export default function Settings() {
-  const { toast } = useToast();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: settings, isLoading } = useGetSettings({ query: { refetchInterval: 30000 } as any });
-  const updateMut = useUpdateSettings({
-    mutation: {
-      onSuccess: () => toast({ title: "Settings saved", description: "Bot settings updated." }),
-      onError: () => toast({ title: "Save failed", variant: "destructive" }),
-    },
-  });
-
-  const [form, setForm] = useState<FormState>({
-    tradeTime: 60,
-    tradeAmount: 1.0,
-    tradeAmountType: "fixed",
-    maxActiveTrades: 5,
-    riskLevel: "mid",
-    balanceType: "demo",
-    marketCategories: ["otc", "forex", "crypto", "stocks", "indices"],
-    tradingMode: "both",
-    enableRsi: true,
-    enableMacd: true,
-    enableBollinger: true,
-    enableEma: true,
-    enableVolume: true,
-    rsiWeight: 20,
-    macdWeight: 20,
-    bollingerWeight: 20,
-    emaWeight: 20,
-    volumeWeight: 20,
-    enableFinnhub: false,
-    finnhubWeight: 20,
-    enableTwelveData: false,
-    twelveDataWeight: 20,
-    enableGemini: false,
-    geminiWeight: 20,
-    enableAlpaca: false,
-    alpacaWeight: 20,
-    rsiPeriod: 14,
-    rsiOversold: 30,
-    rsiOverbought: 70,
-    macdFast: 12,
-    macdSlow: 26,
-    macdSignal: 9,
-    bollingerPeriod: 20,
-    bollingerStdDev: 2,
-    emaFast: 9,
-    emaSlow: 21,
-  });
+  const { settings, saveSettings, run, state } = useBot();
+  const [draft, setDraft] = useState<BotSettings | null>(settings);
+  const [symbolsText, setSymbolsText] = useState("");
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    if (settings) {
-      setForm({
-        tradeTime: settings.tradeTime ?? 60,
-        tradeAmount: settings.tradeAmount ?? 1.0,
-        tradeAmountType: (settings as FormState).tradeAmountType ?? "fixed",
-        maxActiveTrades: settings.maxActiveTrades ?? 5,
-        riskLevel: settings.riskLevel ?? "mid",
-        balanceType: settings.balanceType ?? "demo",
-        marketCategories: (settings as FormState).marketCategories ?? ["otc", "forex", "crypto", "stocks", "indices"],
-        tradingMode: (settings as FormState).tradingMode ?? "both",
-        enableRsi: settings.enableRsi ?? true,
-        enableMacd: settings.enableMacd ?? true,
-        enableBollinger: settings.enableBollinger ?? true,
-        enableEma: settings.enableEma ?? true,
-        enableVolume: settings.enableVolume ?? true,
-        rsiWeight: (settings as FormState).rsiWeight ?? 20,
-        macdWeight: (settings as FormState).macdWeight ?? 20,
-        bollingerWeight: (settings as FormState).bollingerWeight ?? 20,
-        emaWeight: (settings as FormState).emaWeight ?? 20,
-        volumeWeight: (settings as FormState).volumeWeight ?? 20,
-        enableFinnhub: (settings as FormState).enableFinnhub ?? false,
-        finnhubWeight: (settings as FormState).finnhubWeight ?? 20,
-        enableTwelveData: (settings as FormState).enableTwelveData ?? false,
-        twelveDataWeight: (settings as FormState).twelveDataWeight ?? 20,
-        enableGemini: (settings as FormState).enableGemini ?? false,
-        geminiWeight: (settings as FormState).geminiWeight ?? 20,
-        enableAlpaca: (settings as FormState).enableAlpaca ?? false,
-        alpacaWeight: (settings as FormState).alpacaWeight ?? 20,
-        rsiPeriod: (settings as FormState).rsiPeriod ?? 14,
-        rsiOversold: (settings as FormState).rsiOversold ?? 30,
-        rsiOverbought: (settings as FormState).rsiOverbought ?? 70,
-        macdFast: (settings as FormState).macdFast ?? 12,
-        macdSlow: (settings as FormState).macdSlow ?? 26,
-        macdSignal: (settings as FormState).macdSignal ?? 9,
-        bollingerPeriod: (settings as FormState).bollingerPeriod ?? 20,
-        bollingerStdDev: (settings as FormState).bollingerStdDev ?? 2,
-        emaFast: (settings as FormState).emaFast ?? 9,
-        emaSlow: (settings as FormState).emaSlow ?? 21,
-      });
+    if (settings && !dirty) {
+      setDraft(settings);
+      setSymbolsText(settings.symbols.join(", "));
     }
-  }, [settings]);
+  }, [settings, dirty]);
 
-  const toggleCategory = (key: string) => {
-    setForm((f) => {
-      const cats = f.marketCategories.includes(key)
-        ? f.marketCategories.filter((c) => c !== key)
-        : [...f.marketCategories, key];
-      return { ...f, marketCategories: cats };
-    });
+  if (!draft) return <div className="p-6 text-sm text-muted-foreground">Loading settings…</div>;
+
+  const set = <K extends keyof BotSettings>(k: K, v: BotSettings[K]) => {
+    setDraft({ ...draft, [k]: v });
+    setDirty(true);
   };
-
-  const handleSave = () => {
-    updateMut.mutate({ data: form as BotSettings });
+  const setInd = (key: string, patch: Partial<{ enabled: boolean; weight: number }>) => {
+    setDraft({ ...draft, indicators: { ...draft.indicators, [key]: { ...draft.indicators[key], ...patch } } });
+    setDirty(true);
   };
+  const setParam = (key: string, v: number) => {
+    setDraft({ ...draft, indicatorParams: { ...draft.indicatorParams, [key]: v } });
+    setDirty(true);
+  };
+  const labels = Object.fromEntries((state?.learning?.indicators ?? []).map((i) => [i.key, i.label]));
 
-  if (isLoading) {
-    return <div className="p-6 text-slate-400">Loading settings...</div>;
+  async function save() {
+    if (!draft) return;
+    const symbols = symbolsText.split(/[\s,]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+    await saveSettings({ ...draft, symbols });
+    setDirty(false);
   }
 
+  const n = (k: keyof BotSettings) => draft[k] as number;
+
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-white">Settings</h1>
-        <p className="text-sm text-slate-400 mt-0.5">Configure trade parameters and analysis methods</p>
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold">Settings</h1>
+          <p className="text-xs text-muted-foreground">Auto-tune may change some of these automatically — every change is logged on the Learning page.</p>
+        </div>
       </div>
 
-      {/* Trade Config */}
-      <Card className="bg-slate-900 border-slate-700">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-white">Trade Configuration</CardTitle>
-          <CardDescription className="text-xs text-slate-500">
-            OTC markets support 3s/5s/10s. Normal markets require minimum 60s.
-          </CardDescription>
-        </CardHeader>
-        <Separator className="bg-slate-800 mb-4" />
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-slate-300 text-xs">Trade Duration</Label>
-              <Select
-                value={String(form.tradeTime)}
-                onValueChange={(v) => setForm((f) => ({ ...f, tradeTime: Number(v) }))}
-              >
-                <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-700">
-                  <SelectItem value="3">3 seconds (OTC only)</SelectItem>
-                  <SelectItem value="5">5 seconds (OTC only)</SelectItem>
-                  <SelectItem value="10">10 seconds (OTC only)</SelectItem>
-                  <SelectItem value="60">1 minute</SelectItem>
-                  <SelectItem value="120">2 minutes</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      <ApiKeys />
 
-            <div className="space-y-2">
-              <Label className="text-slate-300 text-xs">Trade Amount</Label>
-              <div className="flex gap-2">
-                <div className="flex rounded-md border border-slate-600 overflow-hidden text-xs">
-                  <button
-                    onClick={() => setForm((f) => ({ ...f, tradeAmountType: "fixed" }))}
-                    className={cn("px-2.5 py-1.5 transition-colors", form.tradeAmountType === "fixed"
-                      ? "bg-slate-600 text-white" : "text-slate-400 hover:bg-slate-800")}
-                  >
-                    $
-                  </button>
-                  <button
-                    onClick={() => setForm((f) => ({ ...f, tradeAmountType: "percentage" }))}
-                    className={cn("px-2.5 py-1.5 transition-colors", form.tradeAmountType === "percentage"
-                      ? "bg-slate-600 text-white" : "text-slate-400 hover:bg-slate-800")}
-                  >
-                    %
-                  </button>
-                </div>
+      <Panel title="Markets & prediction">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="sm:col-span-2 lg:col-span-3">
+            <Field label="Trading pairs" hint="Binance Spot symbols, comma separated (e.g. BTCUSDT, ETHUSDT). USDT pairs recommended.">
+              <Textarea rows={2} value={symbolsText} onChange={(e) => { setSymbolsText(e.target.value); setDirty(true); }} className="font-mono text-xs" />
+            </Field>
+          </div>
+          <Field label="Candle interval">
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={draft.interval}
+              onChange={(e) => set("interval", e.target.value as BotSettings["interval"])}
+            >
+              {INTERVALS.map((i) => <option key={i} value={i}>{i}</option>)}
+            </select>
+          </Field>
+          <Field label="Scan every (seconds)"><Num value={n("scanIntervalSec")} onChange={(v) => set("scanIntervalSec", v)} min={10} /></Field>
+          <Field label="Prediction horizon (candles)" hint="How far ahead predictions are scored."><Num value={n("predictionHorizon")} onChange={(v) => set("predictionHorizon", v)} min={1} /></Field>
+          <Field label="Minimum confidence %" hint="Only trade signals at or above this."><Num value={n("minConfidence")} onChange={(v) => set("minConfidence", v)} min={50} max={95} /></Field>
+          <Field label="Minimum ADX (trend filter)" hint="0 = off. 20+ skips sideways markets."><Num value={n("minAdx")} onChange={(v) => set("minAdx", v)} min={0} max={60} /></Field>
+        </div>
+      </Panel>
+
+      <Panel title="Paper trading & risk">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Paper start balance (USDT)" hint="Applied after Reset paper account."><Num value={n("paperStartBalance")} onChange={(v) => set("paperStartBalance", v)} /></Field>
+          <Field label="Trade size (% of balance)"><Num value={n("paperTradeSizePct")} onChange={(v) => set("paperTradeSizePct", v)} step={0.5} /></Field>
+          <Field label="Max open paper positions"><Num value={n("maxOpenPositions")} onChange={(v) => set("maxOpenPositions", v)} /></Field>
+          <Field label="Stop-loss (× ATR)"><Num value={n("slAtrMult")} onChange={(v) => set("slAtrMult", v)} step={0.1} /></Field>
+          <Field label="Take-profit (× ATR)"><Num value={n("tpAtrMult")} onChange={(v) => set("tpAtrMult", v)} step={0.1} /></Field>
+          <Field label="Max hold (candles)"><Num value={n("maxHoldCandles")} onChange={(v) => set("maxHoldCandles", v)} /></Field>
+          <Field label="Fee per side %"><Num value={n("feePct")} onChange={(v) => set("feePct", v)} step={0.01} /></Field>
+          <div className="sm:col-span-2 flex items-end">
+            <Toggle label="Allow short trades (paper only)" hint="Binance Spot live trading is always long-only." checked={draft.allowShort} onChange={(v) => set("allowShort", v)} />
+          </div>
+        </div>
+      </Panel>
+
+      <Panel title="Live trading safety">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Order size (USDT)" hint="Binance minimum is about 5–10 USDT."><Num value={n("liveTradeAmountUsdt")} onChange={(v) => set("liveTradeAmountUsdt", v)} /></Field>
+          <Field label="Max open live positions"><Num value={n("liveMaxOpenPositions")} onChange={(v) => set("liveMaxOpenPositions", v)} /></Field>
+          <Field label="Daily loss limit (USDT)" hint="Live trading switches off when hit."><Num value={n("liveDailyLossLimitUsdt")} onChange={(v) => set("liveDailyLossLimitUsdt", v)} /></Field>
+        </div>
+      </Panel>
+
+      <Panel title="Auto-tune">
+        <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
+          <Toggle label="Auto-tune enabled" hint="Learn from results and update settings automatically." checked={draft.autoTune} onChange={(v) => set("autoTune", v)} />
+          <Field label="Run after every N closed trades"><Num value={n("autoTuneEvery")} onChange={(v) => set("autoTuneEvery", v)} min={1} /></Field>
+          <Toggle label="Tune indicator weights" checked={draft.tuneWeights} onChange={(v) => set("tuneWeights", v)} />
+          <Toggle label="Tune minimum confidence" checked={draft.tuneThreshold} onChange={(v) => set("tuneThreshold", v)} />
+          <Toggle label="Tune stop-loss / take-profit" checked={draft.tuneRisk} onChange={(v) => set("tuneRisk", v)} />
+          <Toggle label="Block weak pairs, hours, shorts, ranging markets" checked={draft.tuneFilters} onChange={(v) => set("tuneFilters", v)} />
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <Field label="Blocked pairs" hint="Set by auto-tune; edit to unblock.">
+            <Input
+              value={draft.blockedSymbols.join(", ")}
+              onChange={(e) => set("blockedSymbols", e.target.value.split(/[\s,]+/).map((s) => s.toUpperCase()).filter(Boolean))}
+              className="font-mono text-xs"
+            />
+          </Field>
+          <Field label="Blocked hours (UTC)">
+            <Input
+              value={draft.blockedHours.join(", ")}
+              onChange={(e) => set("blockedHours", e.target.value.split(/[\s,]+/).filter(Boolean).map(Number))}
+              className="font-mono text-xs"
+            />
+          </Field>
+        </div>
+      </Panel>
+
+      <Panel title="Indicators & prediction tools">
+        <div className="grid gap-2 md:grid-cols-2">
+          {Object.entries(draft.indicators).map(([key, cfg]) => (
+            <div key={key} className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Switch checked={cfg.enabled} onCheckedChange={(v) => setInd(key, { enabled: v })} aria-label={`Enable ${labels[key] ?? key}`} />
+                <span className="text-sm truncate">{labels[key] ?? key}</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="hidden sm:inline text-[11px] text-muted-foreground">weight</span>
                 <Input
                   type="number"
-                  min={form.tradeAmountType === "fixed" ? 1 : 0.1}
-                  max={form.tradeAmountType === "percentage" ? 100 : undefined}
-                  step={form.tradeAmountType === "fixed" ? 0.5 : 0.1}
-                  value={form.tradeAmount}
-                  onChange={(e) => setForm((f) => ({ ...f, tradeAmount: parseFloat(e.target.value) || 1 }))}
-                  className="bg-slate-800 border-slate-600 text-white flex-1"
-                />
-              </div>
-              <p className="text-xs text-slate-600">
-                {form.tradeAmountType === "percentage" ? "% of account balance per trade" : "Fixed USD amount per trade"}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-slate-300 text-xs">Max Simultaneous Trades</Label>
-              <Select
-                value={String(form.maxActiveTrades)}
-                onValueChange={(v) => setForm((f) => ({ ...f, maxActiveTrades: Number(v) }))}
-              >
-                <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-700">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-slate-300 text-xs">Risk Level</Label>
-              <Select
-                value={form.riskLevel}
-                onValueChange={(v) => setForm((f) => ({ ...f, riskLevel: v }))}
-              >
-                <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-700">
-                  <SelectItem value="low">Low — Strong signals only (≥70%)</SelectItem>
-                  <SelectItem value="mid">Mid — Moderate signals (≥55%)</SelectItem>
-                  <SelectItem value="high">High — Any signal (≥40%)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-slate-300 text-xs">Account Type</Label>
-            <Select
-              value={form.balanceType}
-              onValueChange={(v) => setForm((f) => ({ ...f, balanceType: v }))}
-            >
-              <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700">
-                <SelectItem value="demo">Demo Account</SelectItem>
-                <SelectItem value="real">Real Account</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Market Categories */}
-      <Card className="bg-slate-900 border-slate-700">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-white">Market Categories</CardTitle>
-          <CardDescription className="text-xs text-slate-500">
-            Select which market types to scan and trade. Unchecked categories are skipped during analysis.
-          </CardDescription>
-        </CardHeader>
-        <Separator className="bg-slate-800 mb-4" />
-        <CardContent>
-          <div className="flex items-center gap-2 mb-3">
-            <button
-              onClick={() => setForm((f) => ({ ...f, marketCategories: CATEGORIES.map(c => c.key) }))}
-              className="text-xs text-slate-400 hover:text-white transition-colors"
-            >
-              Select all
-            </button>
-            <span className="text-slate-700">·</span>
-            <button
-              onClick={() => setForm((f) => ({ ...f, marketCategories: [] }))}
-              className="text-xs text-slate-400 hover:text-white transition-colors"
-            >
-              Clear
-            </button>
-          </div>
-          <div className="space-y-1">
-            {CATEGORIES.map(({ key, label, desc }) => {
-              const selected = form.marketCategories.includes(key);
-              return (
-                <button
-                  key={key}
-                  onClick={() => toggleCategory(key)}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-colors",
-                    selected ? "bg-slate-800 border border-emerald-700/40" : "bg-slate-800/40 border border-transparent hover:bg-slate-800"
-                  )}
-                >
-                  {selected
-                    ? <CheckSquare className="h-4 w-4 text-emerald-400 flex-shrink-0" />
-                    : <Square className="h-4 w-4 text-slate-500 flex-shrink-0" />
-                  }
-                  <div className="flex-1 min-w-0">
-                    <div className={cn("text-sm font-medium", selected ? "text-white" : "text-slate-400")}>{label}</div>
-                    <div className="text-xs text-slate-500">{desc}</div>
-                  </div>
-                  {selected && (
-                    <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-700 text-[10px]" variant="outline">
-                      Active
-                    </Badge>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Trading Mode */}
-      <Card className="bg-slate-900 border-slate-700">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-white">Trading Mode</CardTitle>
-          <CardDescription className="text-xs text-slate-500">
-            Choose which engine drives trade selection.
-          </CardDescription>
-        </CardHeader>
-        <Separator className="bg-slate-800 mb-4" />
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            {[
-              { key: "technical", label: "Technical Only", desc: "RSI, MACD, Bollinger, EMA, Volume" },
-              { key: "ai", label: "AI Only", desc: "Mathematical confluence scored by AI" },
-              { key: "both", label: "Technical + AI", desc: "Blend indicators with AI scoring" },
-            ].map(({ key, label, desc }) => {
-              const active = form.tradingMode === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setForm((f) => ({ ...f, tradingMode: key }))}
-                  className={cn(
-                    "text-left rounded-md border px-3 py-2.5 transition-colors",
-                    active
-                      ? "bg-slate-800 border-emerald-600 ring-1 ring-emerald-600/40"
-                      : "bg-slate-800/40 border-slate-700 hover:bg-slate-800"
-                  )}
-                >
-                  <div className={cn("text-sm font-medium", active ? "text-white" : "text-slate-300")}>{label}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{desc}</div>
-                </button>
-              );
-            })}
-          </div>
-          {form.tradingMode === "ai" && (
-            <p className="text-xs text-purple-300/80 mt-3">
-              AI scores the JSON payload of each candidate's technical indicators to rate
-              probability. Enable at least one AI method below.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Technical Prediction Methods */}
-      <Card className="bg-slate-900 border-slate-700">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-white">Technical Indicators</CardTitle>
-          <CardDescription className="text-xs text-slate-500">
-            Toggle and set relative weight (0–100%) for each indicator in the combined score.
-          </CardDescription>
-        </CardHeader>
-        <Separator className="bg-slate-800 mb-4" />
-        <CardContent className="space-y-0">
-          <MethodRow
-            enabled={form.enableRsi} onToggle={(v) => setForm((f) => ({ ...f, enableRsi: v }))}
-            label="RSI" desc="Relative Strength Index — overbought/oversold detection"
-            weight={form.rsiWeight} onWeightChange={(v) => setForm((f) => ({ ...f, rsiWeight: v }))}
-          />
-          <MethodRow
-            enabled={form.enableMacd} onToggle={(v) => setForm((f) => ({ ...f, enableMacd: v }))}
-            label="MACD" desc="Moving Average Convergence Divergence — trend + momentum"
-            weight={form.macdWeight} onWeightChange={(v) => setForm((f) => ({ ...f, macdWeight: v }))}
-          />
-          <MethodRow
-            enabled={form.enableBollinger} onToggle={(v) => setForm((f) => ({ ...f, enableBollinger: v }))}
-            label="Bollinger Bands" desc="Volatility bands — breakout and reversal detection"
-            weight={form.bollingerWeight} onWeightChange={(v) => setForm((f) => ({ ...f, bollingerWeight: v }))}
-          />
-          <MethodRow
-            enabled={form.enableEma} onToggle={(v) => setForm((f) => ({ ...f, enableEma: v }))}
-            label="EMA" desc="Exponential Moving Average 9/21 crossover — trend direction"
-            weight={form.emaWeight} onWeightChange={(v) => setForm((f) => ({ ...f, emaWeight: v }))}
-          />
-          <MethodRow
-            enabled={form.enableVolume} onToggle={(v) => setForm((f) => ({ ...f, enableVolume: v }))}
-            label="Volume" desc="Volume analysis — trade confirmation signal"
-            weight={form.volumeWeight} onWeightChange={(v) => setForm((f) => ({ ...f, volumeWeight: v }))}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Indicator Parameters */}
-      <Card className="bg-slate-900 border-slate-700">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-white">Indicator Parameters</CardTitle>
-          <CardDescription className="text-xs text-slate-500">
-            Fine-tune the calculation inputs for each technical indicator.
-          </CardDescription>
-        </CardHeader>
-        <Separator className="bg-slate-800 mb-4" />
-        <CardContent className="space-y-5">
-          <div>
-            <div className="text-xs font-medium text-slate-300 mb-2">RSI</div>
-            <div className="grid grid-cols-3 gap-3">
-              <ParamInput label="Period" value={form.rsiPeriod} min={2} max={100}
-                onChange={(v) => setForm((f) => ({ ...f, rsiPeriod: v }))} />
-              <ParamInput label="Oversold" value={form.rsiOversold} min={1} max={49}
-                onChange={(v) => setForm((f) => ({ ...f, rsiOversold: v }))} />
-              <ParamInput label="Overbought" value={form.rsiOverbought} min={51} max={99}
-                onChange={(v) => setForm((f) => ({ ...f, rsiOverbought: v }))} />
-            </div>
-          </div>
-
-          <div>
-            <div className="text-xs font-medium text-slate-300 mb-2">MACD</div>
-            <div className="grid grid-cols-3 gap-3">
-              <ParamInput label="Fast" value={form.macdFast} min={2} max={100}
-                onChange={(v) => setForm((f) => ({ ...f, macdFast: v }))} />
-              <ParamInput label="Slow" value={form.macdSlow} min={3} max={200}
-                onChange={(v) => setForm((f) => ({ ...f, macdSlow: v }))} />
-              <ParamInput label="Signal" value={form.macdSignal} min={2} max={100}
-                onChange={(v) => setForm((f) => ({ ...f, macdSignal: v }))} />
-            </div>
-          </div>
-
-          <div>
-            <div className="text-xs font-medium text-slate-300 mb-2">Bollinger Bands</div>
-            <div className="grid grid-cols-2 gap-3">
-              <ParamInput label="Period" value={form.bollingerPeriod} min={2} max={100}
-                onChange={(v) => setForm((f) => ({ ...f, bollingerPeriod: v }))} />
-              <ParamInput label="Std Dev" value={form.bollingerStdDev} min={0.5} max={5} step={0.1}
-                onChange={(v) => setForm((f) => ({ ...f, bollingerStdDev: v }))} />
-            </div>
-          </div>
-
-          <div>
-            <div className="text-xs font-medium text-slate-300 mb-2">EMA Crossover</div>
-            <div className="grid grid-cols-2 gap-3">
-              <ParamInput label="Fast" value={form.emaFast} min={2} max={100}
-                onChange={(v) => setForm((f) => ({ ...f, emaFast: v }))} />
-              <ParamInput label="Slow" value={form.emaSlow} min={3} max={200}
-                onChange={(v) => setForm((f) => ({ ...f, emaSlow: v }))} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* AI Prediction Methods */}
-      <Card className="bg-slate-900 border-slate-700">
-        <CardHeader className="pb-2">
-          <div className="flex items-center gap-2">
-            <Brain className="h-4 w-4 text-purple-400" />
-            <CardTitle className="text-sm font-medium text-white">AI Prediction Methods</CardTitle>
-          </div>
-          <CardDescription className="text-xs text-slate-500">
-            External data sources used to enhance signal scoring. API keys are configured via environment secrets.
-          </CardDescription>
-        </CardHeader>
-        <Separator className="bg-slate-800 mb-4" />
-        <CardContent className="space-y-0">
-          {[
-            {
-              enableKey: "enableFinnhub" as const,
-              weightKey: "finnhubWeight" as const,
-              label: "Finnhub",
-              desc: "News sentiment & real-time market data (finnhub.io)",
-              envKey: "FINNHUB_API_KEY",
-            },
-            {
-              enableKey: "enableTwelveData" as const,
-              weightKey: "twelveDataWeight" as const,
-              label: "Twelve Data",
-              desc: "Technical indicators from external feed (twelvedata.com)",
-              envKey: "TWELVE_DATA_API_KEY",
-            },
-            {
-              enableKey: "enableGemini" as const,
-              weightKey: "geminiWeight" as const,
-              label: "Google Gemini",
-              desc: "AI-powered signal prediction via Gemini 1.5 Flash",
-              envKey: "GEMINI_API_KEY",
-            },
-            {
-              enableKey: "enableAlpaca" as const,
-              weightKey: "alpacaWeight" as const,
-              label: "Alpaca",
-              desc: "Market news sentiment via Alpaca data API",
-              envKey: "ALPACA_API_KEY",
-            },
-          ].map(({ enableKey, weightKey, label, desc }) => (
-            <div key={enableKey} className="flex items-center justify-between py-2.5 border-b border-slate-800 last:border-0">
-              <div className="flex-1 min-w-0 mr-3">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm text-white font-medium">{label}</div>
-                </div>
-                <div className="text-xs text-slate-500">{desc}</div>
-              </div>
-              <div className="flex items-center gap-3 flex-shrink-0">
-                {form[enableKey] && (
-                  <WeightInput value={form[weightKey]} onChange={(v) => setForm((f) => ({ ...f, [weightKey]: v }))} />
-                )}
-                <Switch
-                  checked={form[enableKey]}
-                  onCheckedChange={(v) => setForm((f) => ({ ...f, [enableKey]: v }))}
-                  className="data-[state=checked]:bg-purple-600"
+                  inputMode="decimal"
+                  step={0.1}
+                  className="h-8 w-16 sm:w-20"
+                  value={cfg.weight}
+                  onChange={(e) => setInd(key, { weight: Number(e.target.value) })}
                 />
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          {Object.entries(draft.indicatorParams).map(([k, v]) => (
+            <Field key={k} label={k}>
+              <Num value={v} onChange={(x) => setParam(k, x)} step={k === "bbStd" ? 0.1 : 1} />
+            </Field>
+          ))}
+        </div>
+      </Panel>
 
-      <Button onClick={handleSave} disabled={updateMut.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white w-full sm:w-auto">
-        {updateMut.isPending ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-        Save Settings
-      </Button>
+      <Panel title="Data">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => confirm("Reset the paper account and delete paper trade history?") && run("Reset failed", () => api("/reset", { method: "POST", body: { what: "paper" } }))}
+          >
+            Reset paper account
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => confirm("Forget everything the bot has learned?") && run("Reset failed", () => api("/reset", { method: "POST", body: { what: "learning" } }))}
+          >
+            Reset learning
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => confirm("Restore all default settings?") && run("Reset failed", () => api("/settings/defaults", { method: "POST" }).then(() => setDirty(false)))}
+          >
+            Restore default settings
+          </Button>
+        </div>
+      </Panel>
+
+      {/* Sticky save bar */}
+      <div className="sticky bottom-20 md:bottom-4 z-20 flex justify-end">
+        <Button size="lg" onClick={save} disabled={!dirty} className="shadow-lg">
+          <Save className="h-4 w-4 mr-1.5" /> {dirty ? "Save settings" : "Saved"}
+        </Button>
+      </div>
     </div>
   );
 }

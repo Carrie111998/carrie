@@ -1,31 +1,22 @@
 import { Switch, Route, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { BotProvider } from "@/hooks/useBot";
 import Layout from "@/pages/layout";
 import Dashboard from "@/pages/dashboard";
-import Markets from "@/pages/markets";
-import Analysis from "@/pages/analysis";
+import Signals from "@/pages/signals";
+import Learning from "@/pages/learning";
 import History from "@/pages/history";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5000,
-      retry: 1,
-    },
-  },
-});
 
 function Router() {
   return (
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/markets" component={Markets} />
-        <Route path="/analysis" component={Analysis} />
+        <Route path="/signals" component={Signals} />
+        <Route path="/learning" component={Learning} />
         <Route path="/history" component={History} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
@@ -36,14 +27,14 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
+    <TooltipProvider>
+      <BotProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
         </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+      </BotProvider>
+      <Toaster />
+    </TooltipProvider>
   );
 }
 

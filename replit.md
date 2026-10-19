@@ -1,68 +1,55 @@
-# PocketOption Trading Bot
+# Binance Predict Bot
 
-An automated binary options trading dashboard for PocketOption, powered by BinaryOptionsTools-v2. Connects via SSID session cookie, runs multi-indicator analysis across all markets, and auto-places up to 10 simultaneous trades.
+A self-learning Binance crypto prediction bot. It paper-trades every signal, studies its losing trades, auto-tunes its own settings, and can optionally place real Binance Spot orders.
 
-## Run & Operate
+## Run
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
-- `pnpm --filter @workspace/trading-bot run dev` — run the frontend (port 20883)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
+Requirements: Node 20+ with pnpm, and Python 3.10+ with NumPy (`pip install numpy`).
 
-## Stack
+```bash
+pnpm install
+# Development (two terminals)
+PORT=8080 pnpm --filter @workspace/api-server run dev
+PORT=5173 BASE_PATH=/ pnpm --filter @workspace/trading-bot run dev
+# Production: one process serves API + dashboard
+PORT=1 BASE_PATH=/ pnpm --filter @workspace/trading-bot run build
+pnpm --filter @workspace/api-server run build
+PORT=8080 APP_PASSWORD=choose-a-password node artifacts/api-server/dist/index.mjs
+```
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- Frontend: React + Vite + TailwindCSS + shadcn/ui at `/`
-- API: Express 5 + WebSocket (`ws`) at `/api` and `/ws`
-- Trading: Python 3.11 + BinaryOptionsTools-v2 (spawned as child process)
-- Technical Analysis: RSI, MACD, Bollinger Bands, EMA, Volume (NumPy)
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+On Replit, the existing run configuration starts both services.
 
-## Where things live
+| Variable | Purpose |
+| --- | --- |
+| `PORT` | HTTP port (required) |
+| `APP_PASSWORD` | Optional. Protects the dashboard and API with a password. **Set it whenever the app is reachable from the internet**, because it controls live trading. |
+| `BOT_DATA_DIR` | Where trades, learning data, settings and API keys are saved (default `./data`, git-ignored) |
+| `BOT_SIMULATE=1` | Offline simulated prices and orders, for testing without Binance |
 
-- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for all API contracts)
-- `artifacts/trading-bot/src/` — React frontend
-- `artifacts/api-server/src/` — Express API server
-- `artifacts/api-server/src/bot/trading_bot.py` — Python trading bot (spawned by Express)
-- `artifacts/api-server/src/bot/state.ts` — in-memory bot state manager
-- `artifacts/api-server/src/bot/websocket.ts` — WebSocket broadcast layer
+## Features
 
-## Architecture decisions
+- **18 indicators and prediction tools, plus a self-learning AI model**: RSI, MACD, Bollinger Bands, EMA cross, Stochastic, ADX/DMI, CCI, Williams %R, MFI, OBV, VWAP, Supertrend, Ichimoku, Rate of Change, Linear-regression forecast, Candlestick patterns, Volume spikes, EMA-100 trend, and an online logistic-regression model trained on real outcomes. Votes (-1…+1) are combined by learned weights into one direction and a 0–100 confidence.
+- **Auto paper trading** while the bot runs: ATR-based stop-loss and take-profit, max hold time, fees, long and short.
+- **Live trading switch** (requires typing START to confirm): long signals are also sent to Binance Spot as market orders, with a fixed USDT size, a max number of open positions and a daily loss limit that switches live trading off. Testnet is supported and is the default.
+- **API key and secret fields** in Settings, stored server-side only (`data/credentials.json`, mode 600) and never sent back to the browser. There is also a Test connection button.
+- **Accuracy meter**: overall accuracy score, prediction accuracy, win rate over the last 20 and 50 trades, and per-indicator accuracy.
+- **Loss study**: losses broken down by exit reason, pair, hour, confidence, market regime and direction, plus the indicators that backed losing trades, with plain-English insights.
+- **Auto-tune**: every N closed trades it re-weights indicators, moves the minimum confidence, adjusts SL/TP, and blocks weak pairs, hours, shorts and ranging markets. Every change is logged with its reason.
+- **Calibrate**: learns from the last 1000 historical candles per pair before risking anything.
+- **All data is kept**: trades, paper account, learning and settings are saved to disk and survive restarts. Trades export to CSV.
+- **Mobile-first dashboard**: Dashboard, Signals, Learning, History and Settings, with bottom navigation on phones.
 
-- **Python subprocess for trading**: BinaryOptionsTools-v2 is Python-only; Express spawns it as a persistent child process and communicates via stdin/stdout JSON lines.
-- **WebSocket at /ws**: Real-time trade updates, balance changes, and bot status pushed to frontend via WebSocket. The /ws path is registered in artifact.toml alongside /api.
-- **In-memory state**: All bot state (active trades, closed trades, markets, analysis) lives in Node.js memory in `state.ts` — no database needed since this is a personal real-time tool.
-- **Multi-indicator scoring**: RSI + MACD + Bollinger Bands + EMA + Volume are calculated in Python using NumPy on candle history. Signals are scored and ranked; top 10 are used for trading.
-- **OTC vs normal markets**: OTC markets support 3/5/10-sec expiry; normal markets are capped at 60s minimum (enforced in Python bot).
+## Code map
 
-## Product
+- `artifacts/api-server/src/bot/binance_bot.py` — trading engine (scan, signals, paper/live positions, persistence)
+- `artifacts/api-server/src/bot/indicators.py` — indicators and votes
+- `artifacts/api-server/src/bot/learner.py` — accuracy tracking, AI model, loss study, auto-tune
+- `artifacts/api-server/src/bot/binance_client.py` — Binance REST client (public, signed, testnet) and offline simulator
+- `artifacts/api-server/src/bot/engine.ts`, `settings.ts`, `src/routes.ts` — Node process manager, settings validation, REST API (`/api`) and WebSocket (`/ws`)
+- `artifacts/trading-bot/src/` — React dashboard
 
-- Login via PocketOption SSID session cookie (extracted from browser)
-- Dashboard: live balance, bot phase (Idle/Analysing/Trading), start/stop controls, active trades
-- Trade Setup: configure time (3s/5s/10s/1min/2min), amount, max simultaneous trades (1-10), risk level (Low/Mid/High), enable/disable prediction methods
-- Markets: all OTC + normal markets with live RSI/MACD/Bollinger/EMA signals
-- Analysis: top 10 ranked signals with method breakdown scores
-- History: closed trade log with win/loss stats
+## Safety
 
-## User preferences
-
-- This tool is for personal use only
-- No placeholder/mock data — all data is real from PocketOption API
-- OTC markets support 3/5/10 sec trades; normal markets minimum 1 min
-
-## Gotchas
-
-- SSID must be extracted from PocketOption browser session (see BinaryOptionsTools-v2 docs/tutorials)
-- Python process is spawned on first bot connect; if it crashes, restart the API server workflow
-- `pnpm --filter @workspace/db run push` is NOT needed — this app uses no database
-- The Python bot communicates via stdin/stdout JSON lines; stderr goes to API server debug logs
-- Do NOT run `pnpm run dev` at workspace root — use workflow restart instead
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
-- BinaryOptionsTools-v2 docs: https://github.com/ChipaDevTeam/BinaryOptionsTools-v2
-- SSID extraction: https://github.com/ChipaDevTeam/BinaryOptionsTools-v2/tree/master/docs/tutorials
+- Create Binance API keys with spot trading only. **Never enable withdrawals**, and restrict the key to your server's IP.
+- Start with paper trading and the testnet (testnet.binance.vision). A high past win rate does not guarantee future profit, so only trade money you can afford to lose.
+- Binance blocks some regions (for example the US) on api.binance.com. Market data falls back between `data-api.binance.vision` and `api.binance.com`. US users need Binance.US, which this bot does not target.

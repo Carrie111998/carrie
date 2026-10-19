@@ -1,50 +1,36 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
-import { botState } from "./state";
+import { engine } from "./engine";
+import { checkPassword } from "../routes";
 import { logger } from "../lib/logger";
 
 export function setupWebSocket(server: Server) {
   const wss = new WebSocketServer({ server, path: "/ws" });
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
-    logger.info({ ip: req.socket.remoteAddress }, "WebSocket client connected");
-
-    const send = (msg: string) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(msg);
-      }
-    };
-
-    botState.registerWsClient(send);
-
-    // Send current state immediately on connect
-    ws.send(JSON.stringify({ type: "status", data: botState.status }));
-    ws.send(JSON.stringify({ type: "active_trades", data: Array.from(botState.activeTrades.values()) }));
-    if (botState.markets.length > 0) {
-      ws.send(JSON.stringify({ type: "market_update", data: botState.markets }));
+    const url = new URL(req.url ?? "/ws", "http://localhost");
+    if (!checkPassword(url.searchParams.get("password"))) {
+      ws.close(4401, "Password required");
+      return;
     }
-    ws.send(JSON.stringify({ type: "analysis_update", data: botState.analysis }));
+
+    const send = (type: string, data: unknown) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, data }));
+    };
+    const unsubscribe = engine.subscribe(send);
+    send("state", engine.publicState());
+    send("settings", engine.settings);
 
     ws.on("message", (raw) => {
       try {
-        const msg = JSON.parse(raw.toString());
-        logger.debug({ msg }, "WS message received");
-        // Clients can request refreshes
-        if (msg.type === "ping") {
-          ws.send(JSON.stringify({ type: "pong" }));
-        } else if (msg.type === "request_status") {
-          ws.send(JSON.stringify({ type: "status", data: botState.status }));
-        }
-      } catch (_) {}
+        if (JSON.parse(raw.toString()).type === "ping") send("pong", null);
+      } catch {
+        /* ignore */
+      }
     });
-
-    ws.on("close", () => {
-      botState.unregisterWsClient(send);
-      logger.info("WebSocket client disconnected");
-    });
-
+    ws.on("close", () => unsubscribe());
     ws.on("error", (err) => {
-      botState.unregisterWsClient(send);
+      unsubscribe();
       logger.warn({ err }, "WebSocket error");
     });
   });

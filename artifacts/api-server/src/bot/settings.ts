@@ -1,0 +1,162 @@
+// Bot settings: defaults, validation and the list of indicators.
+// Must stay in sync with DEFAULT_SETTINGS in binance_bot.py.
+
+export const INDICATOR_KEYS = [
+  "rsi", "macd", "bollinger", "ema", "stochastic", "adx", "cci", "williams", "mfi",
+  "obv", "vwap", "supertrend", "ichimoku", "momentum", "linreg", "candles", "volume", "trend", "ai",
+] as const;
+
+export const INTERVALS = ["1m", "3m", "5m", "15m", "30m", "1h", "4h"] as const;
+
+export interface IndicatorConfig {
+  enabled: boolean;
+  weight: number;
+}
+
+export interface BotSettings {
+  symbols: string[];
+  interval: (typeof INTERVALS)[number];
+  scanIntervalSec: number;
+  predictionHorizon: number;
+  minConfidence: number;
+  maxOpenPositions: number;
+  paperStartBalance: number;
+  paperTradeSizePct: number;
+  allowShort: boolean;
+  slAtrMult: number;
+  tpAtrMult: number;
+  maxHoldCandles: number;
+  minAdx: number;
+  feePct: number;
+  indicators: Record<string, IndicatorConfig>;
+  indicatorParams: Record<string, number>;
+  autoTune: boolean;
+  autoTuneEvery: number;
+  tuneWeights: boolean;
+  tuneThreshold: boolean;
+  tuneRisk: boolean;
+  tuneFilters: boolean;
+  blockedSymbols: string[];
+  blockedHours: number[];
+  liveTradeAmountUsdt: number;
+  liveMaxOpenPositions: number;
+  liveDailyLossLimitUsdt: number;
+}
+
+export function defaultSettings(): BotSettings {
+  return {
+    symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT"],
+    interval: "5m",
+    scanIntervalSec: 30,
+    predictionHorizon: 3,
+    minConfidence: 62,
+    maxOpenPositions: 5,
+    paperStartBalance: 10000,
+    paperTradeSizePct: 5,
+    allowShort: true,
+    slAtrMult: 1.5,
+    tpAtrMult: 2.0,
+    maxHoldCandles: 12,
+    minAdx: 0,
+    feePct: 0.1,
+    indicators: Object.fromEntries(INDICATOR_KEYS.map((k) => [k, { enabled: true, weight: 1 }])),
+    indicatorParams: {
+      rsiPeriod: 14, rsiOversold: 30, rsiOverbought: 70,
+      macdFast: 12, macdSlow: 26, macdSignal: 9,
+      bbPeriod: 20, bbStd: 2, emaFast: 9, emaSlow: 21,
+      stochPeriod: 14, adxPeriod: 14, atrPeriod: 14,
+    },
+    autoTune: true,
+    autoTuneEvery: 5,
+    tuneWeights: true,
+    tuneThreshold: true,
+    tuneRisk: true,
+    tuneFilters: true,
+    blockedSymbols: [],
+    blockedHours: [],
+    liveTradeAmountUsdt: 20,
+    liveMaxOpenPositions: 3,
+    liveDailyLossLimitUsdt: 50,
+  };
+}
+
+// [min, max] for every numeric setting
+const BOUNDS: Record<string, [number, number]> = {
+  scanIntervalSec: [10, 3600],
+  predictionHorizon: [1, 50],
+  minConfidence: [50, 95],
+  maxOpenPositions: [1, 30],
+  paperStartBalance: [100, 10_000_000],
+  paperTradeSizePct: [0.5, 100],
+  slAtrMult: [0.3, 10],
+  tpAtrMult: [0.3, 20],
+  maxHoldCandles: [1, 500],
+  minAdx: [0, 60],
+  feePct: [0, 1],
+  autoTuneEvery: [1, 200],
+  liveTradeAmountUsdt: [5, 100_000],
+  liveMaxOpenPositions: [1, 20],
+  liveDailyLossLimitUsdt: [1, 1_000_000],
+};
+
+const PARAM_BOUNDS: Record<string, [number, number]> = {
+  rsiPeriod: [2, 100], rsiOversold: [5, 50], rsiOverbought: [50, 95],
+  macdFast: [2, 100], macdSlow: [3, 200], macdSignal: [2, 100],
+  bbPeriod: [5, 100], bbStd: [0.5, 5], emaFast: [2, 100], emaSlow: [3, 300],
+  stochPeriod: [3, 100], adxPeriod: [3, 100], atrPeriod: [3, 100],
+};
+
+const clamp = (v: number, [lo, hi]: [number, number]) => Math.min(hi, Math.max(lo, v));
+const INT_KEYS = new Set(["scanIntervalSec", "predictionHorizon", "maxOpenPositions", "maxHoldCandles", "autoTuneEvery", "liveMaxOpenPositions"]);
+const SYMBOL_RE = /^[A-Z0-9]{5,20}$/;
+
+/** Merge an untrusted patch into current settings, dropping anything invalid. */
+export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
+  const next: BotSettings = structuredClone(current);
+  if (!patch || typeof patch !== "object") return next;
+  const p = patch as Record<string, unknown>;
+  const n = next as unknown as Record<string, unknown>;
+
+  for (const [key, range] of Object.entries(BOUNDS)) {
+    const v = Number(p[key]);
+    if (p[key] !== undefined && Number.isFinite(v)) {
+      n[key] = INT_KEYS.has(key) ? Math.round(clamp(v, range)) : clamp(v, range);
+    }
+  }
+  for (const key of ["allowShort", "autoTune", "tuneWeights", "tuneThreshold", "tuneRisk", "tuneFilters"]) {
+    if (typeof p[key] === "boolean") n[key] = p[key];
+  }
+  if (typeof p.interval === "string" && (INTERVALS as readonly string[]).includes(p.interval)) {
+    next.interval = p.interval as BotSettings["interval"];
+  }
+  const symbolList = (v: unknown) =>
+    Array.isArray(v)
+      ? [...new Set(v.map((s) => String(s).trim().toUpperCase()).filter((s) => SYMBOL_RE.test(s)))]
+      : null;
+  const symbols = symbolList(p.symbols);
+  if (symbols && symbols.length > 0) next.symbols = symbols.slice(0, 40);
+  const blocked = symbolList(p.blockedSymbols);
+  if (blocked) next.blockedSymbols = blocked;
+  if (Array.isArray(p.blockedHours)) {
+    next.blockedHours = [...new Set(p.blockedHours.map(Number).filter((h) => Number.isInteger(h) && h >= 0 && h <= 23))].sort((a, b) => a - b);
+  }
+  if (p.indicators && typeof p.indicators === "object") {
+    for (const [k, cfg] of Object.entries(p.indicators as Record<string, unknown>)) {
+      if (!(INDICATOR_KEYS as readonly string[]).includes(k) || !cfg || typeof cfg !== "object") continue;
+      const c = cfg as Record<string, unknown>;
+      const cur = next.indicators[k] ?? { enabled: true, weight: 1 };
+      if (typeof c.enabled === "boolean") cur.enabled = c.enabled;
+      const w = Number(c.weight);
+      if (c.weight !== undefined && Number.isFinite(w)) cur.weight = Math.round(clamp(w, [0, 5]) * 100) / 100;
+      next.indicators[k] = cur;
+    }
+  }
+  if (p.indicatorParams && typeof p.indicatorParams === "object") {
+    for (const [k, v] of Object.entries(p.indicatorParams as Record<string, unknown>)) {
+      const range = PARAM_BOUNDS[k];
+      const num = Number(v);
+      if (range && Number.isFinite(num)) next.indicatorParams[k] = k === "bbStd" ? clamp(num, range) : Math.round(clamp(num, range));
+    }
+  }
+  return next;
+}

@@ -1,201 +1,98 @@
-import { useState } from "react";
-import { useGetTradeHistory, useGetTradeStats, type Trade } from "@workspace/api-client-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, LayoutGrid, List } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
+import { useBot } from "@/hooks/useBot";
+import { api, getPassword, tradesCsvUrl, type Trade } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Empty, ModeBadge, SideBadge, Stat, fmtDateTime, fmtPct, fmtPrice, fmtSigned, pnlClass } from "@/components/bits";
 import { cn } from "@/lib/utils";
 
-function StatusBadge({ status }: { status: string | undefined }) {
-  const s = status ?? "open";
-  const styles: Record<string, string> = {
-    win: "bg-emerald-900/50 text-emerald-300 border-emerald-700",
-    loss: "bg-red-900/50 text-red-300 border-red-700",
-    draw: "bg-slate-800 text-slate-400 border-slate-600",
-    open: "bg-blue-900/50 text-blue-300 border-blue-700",
-  };
-  return (
-    <Badge className={cn("text-xs capitalize", styles[s] ?? styles.open)} variant="outline">
-      {s}
-    </Badge>
-  );
-}
-
-function PnlCell({ profit }: { profit: number | null | undefined }) {
-  if (profit == null) return <span className="text-slate-600">—</span>;
-  return (
-    <span className={cn("font-mono text-sm", profit > 0 ? "text-emerald-400" : profit < 0 ? "text-red-400" : "text-slate-400")}>
-      {profit > 0 ? "+" : ""}{profit.toFixed(2)}
-    </span>
-  );
-}
-
-function TradeCard({ trade }: { trade: Trade }) {
-  return (
-    <Card className="bg-slate-900 border-slate-700">
-      <CardContent className="p-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="font-mono text-sm text-white">{trade.asset}</div>
-          <StatusBadge status={trade.status} />
-        </div>
-        <div className="flex items-center gap-3 text-xs text-slate-400">
-          <span className={cn("flex items-center gap-1 font-medium",
-            trade.direction === "buy" ? "text-emerald-400" : "text-red-400"
-          )}>
-            {trade.direction === "buy" ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-            {(trade.direction ?? "").toUpperCase()}
-          </span>
-          <span>${(trade.amount ?? 0).toFixed(2)}</span>
-          <span>{(trade.duration ?? 0) >= 60 ? `${(trade.duration ?? 0) / 60}m` : `${trade.duration ?? 0}s`}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <PnlCell profit={trade.profit} />
-          <span className="text-xs text-slate-500">
-            {trade.closeTime ? new Date(trade.closeTime).toLocaleTimeString() : "—"}
-          </span>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+type Filter = "all" | "paper" | "live";
 
 export default function History() {
-  const [view, setView] = useState<"list" | "card">("list");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const qOpts = (ms: number) => ({ query: { refetchInterval: ms } as any });
-  const { data: trades, isLoading } = useGetTradeHistory({ limit: 200 }, qOpts(5000));
-  const { data: stats } = useGetTradeStats(qOpts(5000));
+  const { state, run } = useBot();
+  const [filter, setFilter] = useState<Filter>("all");
+  const [trades, setTrades] = useState<Trade[] | null>(null);
+  const closedCount = (state?.paper?.trades ?? 0) + (state?.live?.trades ?? 0);
 
-  const closedTrades = (trades ?? []).filter((t: Trade) => t.status !== "open");
+  useEffect(() => {
+    const q = filter === "all" ? "" : `&mode=${filter}`;
+    api<Trade[]>(`/trades?limit=500${q}`).then(setTrades).catch(() => setTrades([]));
+  }, [filter, closedCount]);
+
+  const stats = filter === "live" ? state?.live : filter === "paper" ? state?.paper : null;
+
+  async function downloadCsv() {
+    await run("Export failed", async () => {
+      const res = await fetch(tradesCsvUrl(), { headers: { "x-app-password": getPassword() } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "trades.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-white">History</h1>
-          <p className="text-sm text-slate-400 mt-0.5">Closed trade log</p>
+          <h1 className="text-xl font-bold">Trade history</h1>
+          <p className="text-xs text-muted-foreground">All trades are saved on the server and survive restarts.</p>
         </div>
-        <div className="flex rounded-md border border-slate-700 overflow-hidden">
-          <button
-            onClick={() => setView("list")}
-            className={cn("px-2.5 py-1.5 transition-colors", view === "list" ? "bg-slate-700 text-white" : "text-slate-500 hover:text-slate-300")}
-          >
-            <List className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => setView("card")}
-            className={cn("px-2.5 py-1.5 transition-colors", view === "card" ? "bg-slate-700 text-white" : "text-slate-500 hover:text-slate-300")}
-          >
-            <LayoutGrid className="h-3.5 w-3.5" />
-          </button>
+        <div className="flex gap-2">
+          <div className="inline-flex rounded-md border border-border p-0.5">
+            {(["all", "paper", "live"] as Filter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={cn("px-3 py-1.5 text-xs rounded capitalize", filter === f ? "bg-secondary text-foreground" : "text-muted-foreground")}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <Button variant="secondary" size="sm" onClick={downloadCsv}>
+            <Download className="h-4 w-4 mr-1" /> CSV
+          </Button>
         </div>
       </div>
 
-      {/* Stats row */}
-      {stats && (stats.totalTrades ?? 0) > 0 && (
+      {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card className="bg-slate-900 border-slate-700">
-            <CardContent className="pt-3 pb-3 px-4">
-              <div className="text-xs text-slate-400 mb-1">All-time P&L</div>
-              <div className={cn("text-lg font-mono font-bold", (stats.totalProfit ?? 0) >= 0 ? "text-emerald-400" : "text-red-400")}>
-                {(stats.totalProfit ?? 0) >= 0 ? "+" : ""}
-                {(stats.totalProfit ?? 0).toFixed(2)}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-slate-900 border-slate-700">
-            <CardContent className="pt-3 pb-3 px-4">
-              <div className="text-xs text-slate-400 mb-1">24h P&L</div>
-              <div className={cn("text-lg font-mono font-bold", (stats.todayProfit ?? 0) >= 0 ? "text-emerald-400" : "text-red-400")}>
-                {(stats.todayProfit ?? 0) >= 0 ? "+" : ""}
-                {(stats.todayProfit ?? 0).toFixed(2)}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-slate-900 border-slate-700">
-            <CardContent className="pt-3 pb-3 px-4">
-              <div className="text-xs text-slate-400 mb-1">Win Rate</div>
-              <div className={cn("text-lg font-mono font-bold",
-                (stats.winRate ?? 0) >= 60 ? "text-emerald-400" : (stats.winRate ?? 0) >= 45 ? "text-yellow-400" : "text-red-400"
-              )}>
-                {(stats.winRate ?? 0).toFixed(1)}%
-              </div>
-              <div className="text-xs text-slate-500 mt-0.5">
-                <span className="text-emerald-400">{stats.wins ?? 0}W</span>
-                <span className="text-slate-600 mx-1">/</span>
-                <span className="text-red-400">{stats.losses ?? 0}L</span>
-                <span className="text-slate-600 mx-1">/</span>
-                <span className="text-slate-400">{stats.draws ?? 0}D</span>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-slate-900 border-slate-700">
-            <CardContent className="pt-3 pb-3 px-4">
-              <div className="text-xs text-slate-400 mb-1">Best Trade</div>
-              <div className="text-lg font-mono font-bold text-emerald-400">
-                {stats.bestTrade != null ? `+${stats.bestTrade.toFixed(2)}` : "—"}
-              </div>
-              <div className="text-xs text-slate-500 mt-0.5">{stats.totalTrades ?? 0} total</div>
-            </CardContent>
-          </Card>
+          <Stat label="Trades" value={stats.trades} sub={`${stats.wins}W / ${stats.losses}L`} />
+          <Stat label="Win rate" value={fmtPct(stats.winRate)} />
+          <Stat label="Total P&L" value={fmtSigned(stats.pnl)} valueClass={pnlClass(stats.pnl)} sub="USDT" />
+          <Stat label="Profit factor" value={stats.profitFactor ?? "—"} />
         </div>
       )}
 
-      {isLoading ? (
-        <div className="py-16 text-center text-slate-500">Loading history...</div>
-      ) : !closedTrades.length ? (
-        <div className="py-16 text-center text-slate-500">No closed trades yet</div>
-      ) : view === "card" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {closedTrades.map((trade: Trade) => <TradeCard key={trade.id} trade={trade} />)}
-        </div>
+      {trades == null ? (
+        <Empty>Loading…</Empty>
+      ) : trades.length === 0 ? (
+        <Empty>No closed trades yet.</Empty>
       ) : (
-        <div className="rounded-lg border border-slate-700 overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm min-w-[550px]">
-            <thead>
-              <tr className="border-b border-slate-700 bg-slate-800/60">
-                <th className="text-left px-4 py-2.5 text-xs text-slate-400 font-medium">Asset</th>
-                <th className="text-left px-4 py-2.5 text-xs text-slate-400 font-medium">Dir</th>
-                <th className="text-left px-4 py-2.5 text-xs text-slate-400 font-medium">Amount</th>
-                <th className="text-left px-4 py-2.5 text-xs text-slate-400 font-medium">Dur</th>
-                <th className="text-left px-4 py-2.5 text-xs text-slate-400 font-medium">Result</th>
-                <th className="text-right px-4 py-2.5 text-xs text-slate-400 font-medium">P&L</th>
-                <th className="text-right px-4 py-2.5 text-xs text-slate-400 font-medium">Closed</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {closedTrades.map((trade: Trade) => (
-                <tr key={trade.id} className="hover:bg-slate-800/40 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="font-mono text-sm text-white">{trade.asset}</div>
-                    {trade.predictionMethod && (
-                      <div className="text-[10px] text-slate-500 capitalize">{trade.predictionMethod}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className={cn("flex items-center gap-1 text-sm font-medium",
-                      trade.direction === "buy" ? "text-emerald-400" : "text-red-400"
-                    )}>
-                      {trade.direction === "buy" ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                      {(trade.direction ?? "").toUpperCase()}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-sm text-white">${(trade.amount ?? 0).toFixed(2)}</td>
-                  <td className="px-4 py-3 text-sm text-slate-400">
-                    {(trade.duration ?? 0) >= 60 ? `${(trade.duration ?? 0) / 60}m` : `${trade.duration ?? 0}s`}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={trade.status} />
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <PnlCell profit={trade.profit} />
-                  </td>
-                  <td className="px-4 py-3 text-right text-xs text-slate-500">
-                    {trade.closeTime ? new Date(trade.closeTime).toLocaleTimeString() : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="rounded-lg border border-card-border bg-card divide-y divide-border">
+          {trades.map((t) => (
+            <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-sm font-semibold">{t.symbol}</span>
+                  <SideBadge side={t.side} />
+                  <ModeBadge mode={t.mode} />
+                  <span className="text-[11px] text-muted-foreground">{t.exitReason.replace("_", " ")}</span>
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground font-mono truncate">
+                  {fmtDateTime(t.openTime)} · {fmtPrice(t.entryPrice)} → {fmtPrice(t.exitPrice)} · conf {t.confidence.toFixed(0)}% · {t.regime}
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <div className={cn("font-mono text-sm font-semibold", pnlClass(t.pnl))}>{fmtSigned(t.pnl)}</div>
+                <div className={cn("font-mono text-xs", pnlClass(t.pnlPct))}>{fmtSigned(t.pnlPct, "%")}</div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

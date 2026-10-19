@@ -1,1 +1,0 @@
-- [Trade resolution idempotency](trade-resolution-race.md) — monitor task + stale reaper can close the same trade; claim it via atomic pop before recording, or stats double-count.
