@@ -1,0 +1,544 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: PocketOption Trading Bot API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: bot
+    description: Bot control and status
+  - name: trades
+    description: Trade management
+  - name: markets
+    description: Market data and signals
+  - name: settings
+    description: Bot settings
+  - name: analysis
+    description: Market analysis
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /bot/status:
+    get:
+      operationId: getBotStatus
+      tags: [bot]
+      summary: Get bot connection and running status
+      responses:
+        "200":
+          description: Bot status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /bot/connect:
+    post:
+      operationId: connectBot
+      tags: [bot]
+      summary: Connect to PocketOption with SSID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectInput"
+      responses:
+        "200":
+          description: Connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+        "400":
+          description: Bad request
+
+  /bot/disconnect:
+    post:
+      operationId: disconnectBot
+      tags: [bot]
+      summary: Disconnect from PocketOption
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /bot/start:
+    post:
+      operationId: startBot
+      tags: [bot]
+      summary: Start the trading bot
+      responses:
+        "200":
+          description: Bot started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+        "400":
+          description: Bot already running or not connected
+
+  /bot/stop:
+    post:
+      operationId: stopBot
+      tags: [bot]
+      summary: Stop the trading bot
+      responses:
+        "200":
+          description: Bot stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /trades/active:
+    get:
+      operationId: getActiveTrades
+      tags: [trades]
+      summary: Get list of active open trades
+      responses:
+        "200":
+          description: Active trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trade"
+
+  /trades/history:
+    get:
+      operationId: getTradeHistory
+      tags: [trades]
+      summary: Get closed trade history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Trade history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trade"
+
+  /trades/stats:
+    get:
+      operationId: getTradeStats
+      tags: [trades]
+      summary: Get trading statistics summary
+      responses:
+        "200":
+          description: Trade statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeStats"
+
+  /markets:
+    get:
+      operationId: getMarkets
+      tags: [markets]
+      summary: Get all available markets with current signals
+      responses:
+        "200":
+          description: Market list with signals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Market"
+
+  /analysis:
+    get:
+      operationId: getAnalysis
+      tags: [analysis]
+      summary: Get current analysis results for top markets
+      responses:
+        "200":
+          description: Analysis results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get current bot settings
+      responses:
+        "200":
+          description: Bot settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotSettings"
+
+    post:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update bot settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotSettings"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotSettings"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    ConnectInput:
+      type: object
+      required: [ssid]
+      properties:
+        ssid:
+          type: string
+          description: PocketOption SSID session cookie value
+        balanceType:
+          type: string
+          enum: [demo, real]
+          default: demo
+          description: Whether to use demo or real account
+
+    BotStatus:
+      type: object
+      required: [connected, running, phase, balance]
+      properties:
+        connected:
+          type: boolean
+        running:
+          type: boolean
+        phase:
+          type: string
+          enum: [idle, connecting, analysing, trading, stopping]
+        balance:
+          type: ["number", "null"]
+        balanceType:
+          type: ["string", "null"]
+          enum: [demo, real, null]
+        activeTradeCount:
+          type: integer
+        analysisProgress:
+          type: ["number", "null"]
+          description: 0-100 percent of analysis complete
+        lastError:
+          type: ["string", "null"]
+        connectedAt:
+          type: ["string", "null"]
+
+    Trade:
+      type: object
+      required: [id, asset, direction, amount, duration, openTime, status]
+      properties:
+        id:
+          type: string
+        asset:
+          type: string
+        direction:
+          type: string
+          enum: [buy, sell]
+        amount:
+          type: number
+        duration:
+          type: integer
+          description: Duration in seconds
+        openTime:
+          type: string
+        closeTime:
+          type: ["string", "null"]
+        openPrice:
+          type: ["number", "null"]
+        closePrice:
+          type: ["number", "null"]
+        profit:
+          type: ["number", "null"]
+        status:
+          type: string
+          enum: [open, win, loss, draw]
+        predictionMethod:
+          type: ["string", "null"]
+        signalStrength:
+          type: ["number", "null"]
+
+    TradeStats:
+      type: object
+      required: [totalTrades, wins, losses, winRate, totalProfit, todayProfit]
+      properties:
+        totalTrades:
+          type: integer
+        wins:
+          type: integer
+        losses:
+          type: integer
+        draws:
+          type: integer
+        winRate:
+          type: number
+        totalProfit:
+          type: number
+        todayProfit:
+          type: number
+        avgProfit:
+          type: number
+        bestTrade:
+          type: ["number", "null"]
+        worstTrade:
+          type: ["number", "null"]
+
+    Market:
+      type: object
+      required: [asset, name, isOtc, isActive]
+      properties:
+        asset:
+          type: string
+        name:
+          type: string
+        isOtc:
+          type: boolean
+        isActive:
+          type: boolean
+        payout:
+          type: ["number", "null"]
+        signalDirection:
+          type: ["string", "null"]
+          enum: [buy, sell, null]
+        signalStrength:
+          type: ["number", "null"]
+        rsi:
+          type: ["number", "null"]
+        macd:
+          type: ["number", "null"]
+        bollingerSignal:
+          type: ["string", "null"]
+        emaSignal:
+          type: ["string", "null"]
+        volume:
+          type: ["number", "null"]
+        category:
+          type: string
+          enum: [forex, crypto, stocks, indices, otc]
+
+    AnalysisResult:
+      type: object
+      required: [status, topMarkets, lastUpdated]
+      properties:
+        status:
+          type: string
+          enum: [idle, running, complete]
+        progress:
+          type: ["number", "null"]
+        topMarkets:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketSignal"
+        lastUpdated:
+          type: ["string", "null"]
+        methodsUsed:
+          type: array
+          items:
+            type: string
+
+    MarketSignal:
+      type: object
+      required: [asset, direction, strength, riskScore]
+      properties:
+        asset:
+          type: string
+        name:
+          type: string
+        direction:
+          type: string
+          enum: [buy, sell]
+        strength:
+          type: number
+          description: 0-100 signal strength
+        riskScore:
+          type: number
+          description: 0-100 risk score (lower = safer)
+        rsiScore:
+          type: ["number", "null"]
+        macdScore:
+          type: ["number", "null"]
+        bollingerScore:
+          type: ["number", "null"]
+        emaScore:
+          type: ["number", "null"]
+        volumeScore:
+          type: ["number", "null"]
+        finnhubScore:
+          type: ["number", "null"]
+        twelveDataScore:
+          type: ["number", "null"]
+        geminiScore:
+          type: ["number", "null"]
+        alpacaScore:
+          type: ["number", "null"]
+        isOtc:
+          type: boolean
+
+    BotSettings:
+      type: object
+      required: [tradeTime, tradeAmount, maxActiveTrades, riskLevel]
+      properties:
+        tradeTime:
+          type: integer
+          description: Trade duration in seconds (3, 5, 10, 60, 120)
+          enum: [3, 5, 10, 60, 120]
+        tradeAmount:
+          type: number
+          description: USD amount per trade or percentage of balance
+          minimum: 0
+        tradeAmountType:
+          type: string
+          enum: [fixed, percentage]
+          default: fixed
+        maxActiveTrades:
+          type: integer
+          description: Maximum simultaneous trades (1-10)
+          minimum: 1
+          maximum: 10
+        riskLevel:
+          type: string
+          enum: [low, mid, high]
+        marketCategories:
+          type: array
+          items:
+            type: string
+            enum: [otc, forex, crypto, stocks, indices]
+        tradingMode:
+          type: string
+          description: Which signal engine drives trade selection
+          enum: [technical, ai, both]
+          default: both
+        enableRsi:
+          type: boolean
+        enableMacd:
+          type: boolean
+        enableBollinger:
+          type: boolean
+        enableEma:
+          type: boolean
+        enableVolume:
+          type: boolean
+        rsiWeight:
+          type: number
+          default: 20
+        macdWeight:
+          type: number
+          default: 20
+        bollingerWeight:
+          type: number
+          default: 20
+        emaWeight:
+          type: number
+          default: 20
+        volumeWeight:
+          type: number
+          default: 20
+        enableFinnhub:
+          type: boolean
+          default: false
+        finnhubWeight:
+          type: number
+          default: 20
+        enableTwelveData:
+          type: boolean
+          default: false
+        twelveDataWeight:
+          type: number
+          default: 20
+        enableGemini:
+          type: boolean
+          default: false
+        geminiWeight:
+          type: number
+          default: 20
+        enableAlpaca:
+          type: boolean
+          default: false
+        alpacaWeight:
+          type: number
+          default: 20
+        rsiPeriod:
+          type: integer
+          description: RSI lookback period
+          default: 14
+        rsiOversold:
+          type: number
+          description: RSI level below which an asset is oversold (buy)
+          default: 30
+        rsiOverbought:
+          type: number
+          description: RSI level above which an asset is overbought (sell)
+          default: 70
+        macdFast:
+          type: integer
+          description: MACD fast EMA period
+          default: 12
+        macdSlow:
+          type: integer
+          description: MACD slow EMA period
+          default: 26
+        macdSignal:
+          type: integer
+          description: MACD signal line EMA period
+          default: 9
+        bollingerPeriod:
+          type: integer
+          description: Bollinger Bands moving-average period
+          default: 20
+        bollingerStdDev:
+          type: number
+          description: Bollinger Bands standard-deviation multiplier
+          default: 2
+        emaFast:
+          type: integer
+          description: Fast EMA period for crossover
+          default: 9
+        emaSlow:
+          type: integer
+          description: Slow EMA period for crossover
+          default: 21
+        balanceType:
+          type: string
+          enum: [demo, real]
+          default: demo
