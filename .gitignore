@@ -50,3 +50,5 @@ Thumbs.db
 
 # Bot runtime data (trades, learning, API keys) — never commit
 /data/
+__pycache__/
+*.pyc
