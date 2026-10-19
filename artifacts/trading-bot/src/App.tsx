@@ -12,7 +12,6 @@ import LearningPage from "@/pages/learning";
 import History from "@/pages/history";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
-import DeviceGate from "@/components/device-gate";
 
 function Learning() {
   const { user } = useAuth();
@@ -54,11 +53,9 @@ function Gate() {
 function App() {
   return (
     <TooltipProvider>
-      <DeviceGate>
-        <AuthProvider>
-          <Gate />
-        </AuthProvider>
-      </DeviceGate>
+      <AuthProvider>
+        <Gate />
+      </AuthProvider>
       <Toaster />
     </TooltipProvider>
   );

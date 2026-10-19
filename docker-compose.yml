@@ -24,7 +24,7 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-}
-      - DEVICE_GATE=${DEVICE_GATE:-on}
+      - DEVICE_GATE=${DEVICE_GATE:-off}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.trader.rule=Host(`trader.srv1854512.hstgr.cloud`)"

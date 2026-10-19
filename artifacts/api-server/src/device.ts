@@ -7,14 +7,16 @@ import type { NextFunction, Request, Response } from "express";
  *    the Sec-CH-UA-Mobile client hint; tablets and desktops are refused),
  *  - it must carry the installed-app marker header,
  *  - and each IP is rate limited.
- * Set DEVICE_GATE=off to disable the device part (e.g. local testing).
+ * Only active with DEVICE_GATE=on; the rate limit always applies.
  * Real security still comes from passwords, single-use OTPs and the rate limits.
  */
 
 export const BLOCK_MESSAGE =
   "This app is available only on Android and iOS smartphones. Please open this link on your mobile phone.";
 
-const gateOn = () => (process.env["DEVICE_GATE"] ?? "on").toLowerCase() !== "off";
+// Off by default (v3.2.0: the app is open to every browser and device). DEVICE_GATE=on restores
+// the phone-only, installed-app-only rule.
+const gateOn = () => (process.env["DEVICE_GATE"] ?? "off").toLowerCase() === "on";
 
 export function isPhoneRequest(req: Request): boolean {
   const ua = String(req.headers["user-agent"] ?? "");

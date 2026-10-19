@@ -1,2 +1,2 @@
 // Keep in sync with package.json "version" and CHANGELOG.md.
-export const APP_VERSION = "3.1.3";
+export const APP_VERSION = "3.2.0";

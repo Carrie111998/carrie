@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.2.0 — 2026-10-19 (branch `release/v3.2.0`)
+
+- **Open to every device and browser**: the phone-only gate and the installed-app requirement are removed — the app (sign-up, login, everything) works in any browser on iPhone, Android, tablets, laptops and desktops. Server-side login protection stays: per-IP rate limit, single-use 10-minute email codes with attempt limits, failed-login lockout. `DEVICE_GATE=on` brings the old phone-only rule back. Phones can still install it to the Home Screen from the browser menu.
+
 ## v3.1.3 — 2026-10-19
 
 - Shared brain (admin's choice): minimum confidence back to 60% and fixed (auto-tune had raised it to 84% from ~50 bets, so no bet passed), and Down bets switched back on. Real betting stays in test mode until switched off by the user.

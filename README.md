@@ -1,4 +1,4 @@
-# Binance Predict Bot — v3.1.3
+# Binance Predict Bot — v3.2.0
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed; older versions are archived in [`archive/`](archive/).
 
@@ -36,7 +36,7 @@ The app runs on port **8888** (`docker-compose.yml` also has Traefik labels for 
 | `PORT` | HTTP port (required) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email server used to send sign-up and password-reset codes (OTP). For Gmail use `smtp.gmail.com`, port 587 and an [app password](https://myaccount.google.com/apppasswords). **If not set, codes are written to the server log instead.** |
 | `DEFAULT_SIGNUP_CODE` | Code that sign-up accepts **only while SMTP is not configured** (default `986796`). Password resets never accept it. |
-| `DEVICE_GATE` | `on` (default): sign-up, login and password reset only accept requests from Android/iOS phones using the installed app. `off` for testing. |
+| `DEVICE_GATE` | `off` (default): the app works in any browser on any device. `on`: sign-up, login and password reset only accept Android/iOS phones using the installed app. |
 | `AUTH_RATE_LIMIT` | Auth requests allowed per IP per 10 minutes (default 30) |
 | `MAX_USERS` | Maximum number of accounts that can sign up (default 50) |
 | `BOT_DATA_DIR` | Where trades, learning data, settings and API keys are saved (default `./data`, git-ignored) |
@@ -45,7 +45,7 @@ The app runs on port **8888** (`docker-compose.yml` also has Traefik labels for 
 ## Features
 
 - **One shared brain**: every user's bot runs the same strategy, managed by the admin and auto-tuned from all users' trades. Users only choose coins (BTC/ETH/BNB), slot time (5m/15m/1h), run time, amounts and limits.
-- **Phone app only**: open the link on an Android phone (Chrome) or iPhone (Safari), tap **Download App** / follow the Add to Home Screen steps, then open it from the Home Screen. Computers and tablets are blocked.
+- **Works everywhere**: any browser on phones, tablets, laptops and desktops. On phones it can also be installed to the Home Screen (Chrome menu → Install app, or Safari Share → Add to Home Screen).
 - **Accounts**: a login page opens first. Sign up with a username, email and password, then confirm the 6-digit code sent to your email. You can log in with your username or email, and there is a "Forgot password" option that also uses an email code. Many users can sign up, and **each one gets their own bot, settings, API keys, paper account and trade history** in `data/users/<id>/`. Passwords are hashed with scrypt and sessions last 30 days.
 - **Bet amount**: choose a fixed USD amount per trade (**standard and minimum is $1**, with quick picks $1/$2/$5/$10/$25/$50) or a % of the paper balance. Live orders have their own size. Binance rejects orders under about 5 USDT on most pairs, so live defaults to $5.
 
