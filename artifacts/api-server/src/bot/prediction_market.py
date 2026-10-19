@@ -226,7 +226,15 @@ class PredictionClient:
 
     def redeem_all(self) -> int:
         data = run_baw(self.dir, ["prediction", "position", "list", "--tab", "PENDING_CLAIM", "--limit", "100"], timeout=30)
-        tokens = sorted({str(d["tokenId"]) for d, _ in _walk(data) if d.get("tokenId")})
-        if tokens:
-            run_baw(self.dir, ["prediction", "trade", "redeem", "--tokenIds", ",".join(tokens)], timeout=90)
-        return len(tokens)
+        # the redeem call must name the chain (56 BSC / 137 Polygon) — group winning tokens by chain
+        by_chain: Dict[str, set] = {}
+        for d, parents in _walk(data):
+            if not d.get("tokenId"):
+                continue
+            chain = next((str(x.get("binanceChainId") or x.get("chainId")) for x in (d, *reversed(parents))
+                          if x.get("binanceChainId") or x.get("chainId")), BSC_CHAIN_ID)
+            by_chain.setdefault(chain, set()).add(str(d["tokenId"]))
+        for chain, tokens in by_chain.items():
+            run_baw(self.dir, ["prediction", "trade", "redeem", "--tokenIds", ",".join(sorted(tokens)),
+                               "--binanceChainId", chain], timeout=90)
+        return sum(len(t) for t in by_chain.values())

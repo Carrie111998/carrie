@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.2.4 — 2026-10-19
+
+- **Fixed "Redeem failed: SERVICE_ERROR: chainId not supported"**: auto-claim now passes `--binanceChainId` (56 BSC, or the position's own chain) to `baw prediction trade redeem`, grouping winning positions by chain.
+
 ## v3.2.3 — 2026-10-19
 
 - **Real bets find ETH and BNB markets**: Binance runs recurring series titled "ETH Up or Down 5m", "BNB Up or Down 15m" etc. The bot now matches the series by coin and slot length (never a 15m/1h/1d market for a 5m slot), loads its details and only bets when the current round ends exactly at the slot's close. Before, it only accepted search results with a matching end time and listed outcomes, so ETH/BNB were reported as "no market". If nothing matches, the log lists what Binance returned.
