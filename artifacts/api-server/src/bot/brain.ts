@@ -140,6 +140,22 @@ export function loadBrain(seed?: () => BotSettings | null): BrainFile {
     });
     save();
   }
+  // v3.1.1: hour blocks were learned from too few (double-counted) bets — clear them; auto-tune now
+  // needs 30+ distinct bets to block an hour and never blocks coins
+  if (!brain.fixes.includes("unblock-v311")) {
+    brain.fixes.push("unblock-v311");
+    const was = { hours: brain.settings.blockedHours ?? [], coins: brain.settings.blockedSymbols ?? [] };
+    brain.settings.blockedHours = [];
+    brain.settings.blockedSymbols = [];
+    brain.log.unshift({
+      time: Date.now(), source: "admin", by: "v3.1.1 update",
+      changes: [
+        { param: "blockedHours", from: JSON.stringify(was.hours), to: "[]", reason: "blocked on too few bets (each bet was counted once per user)" },
+        { param: "blockedSymbols", from: JSON.stringify(was.coins), to: "[]", reason: "coins are no longer blocked automatically" },
+      ],
+    });
+    save();
+  }
   return brain;
 }
 

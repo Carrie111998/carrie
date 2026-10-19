@@ -189,6 +189,11 @@ class Bot:
             base.update(d)
             for k, v in learner.empty_learning().items():
                 base["learning"].setdefault(k, v)
+            if "mu" not in base["learning"]["model"]:
+                # v3.1.1: models trained before centered, mirrored training carried a hidden Up/Down
+                # lean — start the AI model over (indicator stats and trades are kept)
+                base["learning"]["model"] = learner.empty_learning()["model"]
+                base["learning"]["model"]["mu"] = {}
             self.data = base
             tr = self.data["trades"]
             ups = sum(1 for t in tr if t.get("side") == "long")

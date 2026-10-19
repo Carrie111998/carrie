@@ -2,6 +2,12 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.1.1 — 2026-10-19
+
+- **AI model can't lean one way anymore**: it learns from each vote minus that vote's usual level and from every outcome mirrored (Up⇄Down), and ignores the slow trend vote. Before, a vote stuck near +1 let it learn "the market fell lately" as a permanent Down lean (live AI vote sat at about −0.75 on every coin). AI models restart once with the new training.
+- **Each shared bet counted once**: all users' bots place the same bet, so auto-tune and the trade analysis now count it once instead of once per user.
+- **Safer auto-tune blocks**: an hour is blocked only after 30+ distinct bets this week with under 35% wins (it clears itself as trades age out); coins are never blocked automatically. The 09:00 UTC block learned from 4 double-counted bets was removed.
+
 ## v3.1.0 — 2026-10-19 (branch `release/v3.1.0`)
 
 Research-based betting rules (5-minute crypto Up/Down markets are close to random and bot-dominated; the edge comes from comparing your win estimate with the executable price and from order flow):

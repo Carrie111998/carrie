@@ -26,7 +26,7 @@ import learner  # noqa: E402
 from binance_bot import DEFAULT_SETTINGS, merge_settings  # noqa: E402
 
 MAX_TRADES = 20000
-KEEP = ("mode", "kind", "symbol", "side", "result", "pnl", "pnlPct", "confidence", "openTime", "closeTime",
+KEEP = ("mode", "kind", "symbol", "side", "entryPrice", "result", "pnl", "pnlPct", "confidence", "openTime", "closeTime",
         "regime", "exitReason", "heldCandles", "votes", "quote")
 
 
@@ -91,6 +91,17 @@ def main(data_dir: str):
             c["actual"] = 0 if not entry or not exit_ else (1 if exit_ > entry else -1 if exit_ < entry else 0)
             trades.append(c)
 
+    # One brain = every user's bot places the same bet on the same slot. Count each such bet once,
+    # otherwise two users would make every result look twice as certain to auto-tune.
+    seen, unique = set(), []
+    for t in sorted(trades, key=lambda t: t.get("closeTime") or 0):
+        # same coin, same side, same slot (prediction bets share the slot's opening price)
+        key = (t.get("symbol"), t.get("side"), t.get("kind"), t.get("entryPrice"), (t.get("openTime") or 0) // 3_600_000)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(t)
+    trades = unique
     trades.sort(key=lambda t: t.get("closeTime") or 0, reverse=True)
     trades = trades[:MAX_TRADES]
 

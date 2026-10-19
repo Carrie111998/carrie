@@ -26,7 +26,7 @@ WEEK_MS = 7 * 24 * 3600 * 1000
 def empty_learning() -> dict:
     return {
         "indicators": {},
-        "model": {"w": {}, "b": 0.0, "samples": 0},
+        "model": {"w": {}, "b": 0.0, "samples": 0, "mu": {}},
         "predictions": {"hits": 0, "total": 0, "recent": []},
         "symbols": {},
         "tuningLog": [],
@@ -92,15 +92,34 @@ def _sigmoid(z: float) -> float:
     return 1 / (1 + math.exp(-z))
 
 
+MU_ALPHA = 0.01  # how fast each vote's "usual level" follows recent values
+
+
+def _centered(model: dict, votes: Dict[str, float]) -> Dict[str, float]:
+    """Each vote minus its usual level: a vote stuck near +1 (or -1) carries no information."""
+    mu = model.get("mu", {})
+    return {k: v - mu.get(k, 0.0) for k, v in votes.items() if k != AI_KEY and k not in CONTEXT_KEYS}
+
+
 def _train_model(model: dict, votes: Dict[str, float], actual: int):
-    feats = {k: v for k, v in votes.items() if k != AI_KEY}
-    y = 1.0 if actual > 0 else 0.0
+    """Online logistic regression on centered votes, trained on each outcome AND its mirror image
+    (votes and result flipped). Together that keeps the model direction-neutral: it can't turn
+    "the market mostly fell lately" into a permanent Up or Down lean."""
+    mu = model.setdefault("mu", {})
+    for k, v in votes.items():
+        if k != AI_KEY and k not in CONTEXT_KEYS:
+            mu[k] = mu.get(k, v) * (1 - MU_ALPHA) + v * MU_ALPHA
+    feats = _centered(model, votes)
     w = model["w"]
-    p = _sigmoid(model["b"] + sum(w.get(k, 0.0) * v for k, v in feats.items()))
-    g = y - p
-    for k, v in feats.items():
-        w[k] = w.get(k, 0.0) * (1 - 1e-4) + LR * g * v
-    model["b"] += LR * g * 0.1
+    for sign in (1, -1):
+        y = 1.0 if actual * sign > 0 else 0.0
+        p = _sigmoid(sum(w.get(k, 0.0) * v * sign for k, v in feats.items()))
+        g = y - p
+        for k, v in feats.items():
+            w[k] = w.get(k, 0.0) * (1 - 1e-4) + LR * g * v * sign
+    for k in CONTEXT_KEYS:
+        w.pop(k, None)
+    model["b"] = 0.0
     model["samples"] += 1
 
 
@@ -110,7 +129,9 @@ def ai_vote(learning: dict, votes: Dict[str, float]) -> Optional[float]:
         return None
     # no bias term: it only remembers whether the market mostly rose or fell while the model
     # trained, which made every prediction lean the same way (e.g. Up only)
-    z = sum(m["w"].get(k, 0.0) * v for k, v in votes.items() if k != AI_KEY)
+    if "mu" not in m:
+        return None  # model from before v3.1.1: retrain with centered votes first
+    z = sum(m["w"].get(k, 0.0) * v for k, v in _centered(m, votes).items())
     return round(2 * _sigmoid(z) - 1, 4)
 
 
@@ -324,23 +345,12 @@ def autotune(settings: dict, learning: dict, trades: List[dict], now_ms: int) ->
 
     # 4) Filters: symbols, hours, shorts, ranging markets (based on the last 7 days)
     if settings.get("tuneFilters", True):
-        blocked = list(settings.get("blockedSymbols", []))
-        for r in _group(week, lambda t: t["symbol"]):
-            if r["trades"] >= 8 and r["winRate"] < 35 and r["pnl"] < 0 and r["key"] not in blocked:
-                blocked.append(r["key"])
-                _change(changes, f"block.{r['key']}", False, True, f"won {r['winRate']}% of {r['trades']} trades this week")
-        for sym in list(settings.get("blockedSymbols", [])):
-            acc, n = accuracy(learning["symbols"].get(sym))
-            # blocked symbols still get scan predictions, so recovery is measurable
-            if n >= 20 and acc >= 0.55:
-                blocked.remove(sym)
-                _change(changes, f"block.{sym}", True, False, f"prediction accuracy recovered to {acc * 100:.0f}%")
-        if sorted(blocked) != sorted(settings.get("blockedSymbols", [])):
-            patch["blockedSymbols"] = blocked
-
-        hours = sorted({int(r["key"]) for r in _group(week, _hour) if r["trades"] >= 8 and r["winRate"] < 30})
+        # Coins are never blocked automatically: each user picks their coins, and a blocked coin gets
+        # no new bets, so the evidence to unblock it would never arrive. Admins can block by hand.
+        # recomputed every tune over the last 7 days, so a blocked hour clears itself as old trades age out
+        hours = sorted({int(r["key"]) for r in _group(week, _hour) if r["trades"] >= 30 and r["winRate"] < 35})
         if hours != sorted(settings.get("blockedHours", [])):
-            _change(changes, "blockedHours", settings.get("blockedHours", []), hours, "hours (UTC) with <30% win rate this week")
+            _change(changes, "blockedHours", settings.get("blockedHours", []), hours, "hours (UTC) with <35% win rate over 30+ bets this week")
             patch["blockedHours"] = hours
 
         # Down bets / shorts are never switched off automatically: once off, no new Down results
