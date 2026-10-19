@@ -1,0 +1,28 @@
+services:
+  trader:
+    build: .
+    container_name: paper-trader
+    restart: unless-stopped
+    volumes:
+      - trader-data:/app/data
+    environment:
+      - DATA_DIR=/app/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.trader.rule=Host(`trader.kepexo.com`)"
+      - "traefik.http.routers.trader.entrypoints=websecure"
+      - "traefik.http.routers.trader.tls.certresolver=myresolver"
+      - "traefik.http.services.trader.loadbalancer.server.port=8888"
+      - "traefik.http.routers.trader-ws.rule=Host(`trader.kepexo.com`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.trader-ws.entrypoints=websecure"
+      - "traefik.http.routers.trader-ws.tls.certresolver=myresolver"
+      - "traefik.http.routers.trader-ws.service=trader"
+    networks:
+      - traefik-network
+
+volumes:
+  trader-data:
+
+networks:
+  traefik-network:
+    external: true
