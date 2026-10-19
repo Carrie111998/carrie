@@ -2,6 +2,14 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v2.2.0 — 2026-10-19 (branch `release/v2.2.0`)
+
+- **Phone-only app**: works only on Android phones (Chrome) and iPhones (Safari). Desktops, laptops and tablets see "This app is available only on Android and iOS smartphones. Please open this link on your mobile phone." Detection uses the User-Agent, client hints, platform, touch support and (only as a tie-breaker) screen size.
+- **Install as an app (PWA)**: manifest, icons and service worker. Android shows a **Download App** button (Chrome's install prompt) or menu steps; iPhone shows Safari "Add to Home Screen" steps. In-app browsers (Facebook, Instagram, TikTok…) and other browsers are told to open the link in Chrome or Safari.
+- **Sign-up/login only inside the installed app** (display-mode standalone / `navigator.standalone`).
+- **Server-side protection** on all sign-up, login and reset endpoints: phone-only User-Agent/client-hint check, installed-app header, and a per-IP rate limit (30 requests per 10 minutes), on top of single-use, 10-minute, 5-attempt OTPs. `DEVICE_GATE=off` disables the device check for testing.
+- **Hostinger email** settings (`smtp.hostinger.com`, port 465) in `.env.example` and `docker-compose.yml`.
+
 ## v2.1.0 — 2026-10-19 (branch `release/v2.1.0`)
 
 **Admin user management.**

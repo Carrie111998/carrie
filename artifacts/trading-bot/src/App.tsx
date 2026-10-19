@@ -12,6 +12,7 @@ import Learning from "@/pages/learning";
 import History from "@/pages/history";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
+import DeviceGate from "@/components/device-gate";
 
 function Router() {
   return (
@@ -48,9 +49,11 @@ function Gate() {
 function App() {
   return (
     <TooltipProvider>
-      <AuthProvider>
-        <Gate />
-      </AuthProvider>
+      <DeviceGate>
+        <AuthProvider>
+          <Gate />
+        </AuthProvider>
+      </DeviceGate>
       <Toaster />
     </TooltipProvider>
   );

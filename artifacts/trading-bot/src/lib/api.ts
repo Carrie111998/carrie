@@ -1,5 +1,6 @@
 // Typed client for the bot API (/api) — mirrors artifacts/api-server.
 
+import { isStandalone } from "./device";
 export type Side = "long" | "short";
 export type Mode = "paper" | "live";
 
@@ -373,7 +374,7 @@ export const authHeaders = (): Record<string, string> => {
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: init.method ?? "GET",
-    headers: { "content-type": "application/json", ...authHeaders() },
+    headers: { "content-type": "application/json", "x-app-mode": isStandalone() ? "standalone" : "browser", ...authHeaders() },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
   const text = await res.text();

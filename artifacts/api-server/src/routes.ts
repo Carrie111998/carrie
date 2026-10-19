@@ -8,6 +8,7 @@ import {
   listUsers, login, logout, publicUser, requireAdmin, requireUser,
   startReset, startSignup, verifyReset, verifySignup, type User,
 } from "./auth";
+import { protectAuth } from "./device";
 
 const router: IRouter = Router();
 
@@ -33,25 +34,25 @@ router.get("/auth/config", (_req, res) => {
   res.json({ emailEnabled: emailEnabled() });
 });
 
-router.post("/auth/signup", wrap(async (req, res) => {
+router.post("/auth/signup", protectAuth, wrap(async (req, res) => {
   res.json(await startSignup(req.body ?? {}));
 }));
 
-router.post("/auth/signup/verify", wrap(async (req, res) => {
+router.post("/auth/signup/verify", protectAuth, wrap(async (req, res) => {
   const { user, token } = await verifySignup(req.body ?? {});
   res.json({ user: publicUser(user), token });
 }));
 
-router.post("/auth/login", wrap(async (req, res) => {
+router.post("/auth/login", protectAuth, wrap(async (req, res) => {
   const { user, token } = await login(req.body ?? {}, req.ip ?? "");
   res.json({ user: publicUser(user), token });
 }));
 
-router.post("/auth/reset", wrap(async (req, res) => {
+router.post("/auth/reset", protectAuth, wrap(async (req, res) => {
   res.json(await startReset(req.body ?? {}));
 }));
 
-router.post("/auth/reset/verify", wrap(async (req, res) => {
+router.post("/auth/reset/verify", protectAuth, wrap(async (req, res) => {
   const { user, token } = await verifyReset(req.body ?? {});
   res.json({ user: publicUser(user), token });
 }));

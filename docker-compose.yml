@@ -19,6 +19,12 @@ services:
     environment:
       - PORT=8888
       - BOT_DATA_DIR=/app/data
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - DEVICE_GATE=${DEVICE_GATE:-on}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.trader.rule=Host(`trader.srv1854512.hstgr.cloud`)"
