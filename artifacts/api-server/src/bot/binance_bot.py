@@ -42,7 +42,7 @@ from prediction_market import (  # noqa: E402
 
 SIMULATE = os.environ.get("BOT_SIMULATE") == "1"
 MAX_TRADES = 5000
-BET_CUTOFF_FRACTION = 0.2   # no new Prediction bets in the last 20% of a slot (e.g. last 60 s of 5 min)
+BET_CUTOFF_FRACTION = 0.1   # no new Prediction bets in the last 10% of a slot (last 30 s of 5 min)
 PRACTICE_SPREAD = 0.02      # practice share prices include a small spread, like the real order book
 MAX_EQUITY_POINTS = 500
 
@@ -369,27 +369,43 @@ class Bot:
             r.append("too late in the slot")
         return r
 
-    def fair_share_price(self, sig: dict, slot: dict) -> float:
-        """Practice price of the predicted side: chance the slot ends that way if price keeps moving
-        randomly at its recent volatility, plus a small spread like a real order book."""
+    @staticmethod
+    def _random_walk_chance(sig: dict, slot: dict) -> Tuple[float, float]:
+        """(chance the slot ends on the predicted side if price moves randomly from here, share of the slot left)."""
         left = max(1.0, (slot["slotEnd"] - now_ms()) / 1000)
         length = max(1.0, (slot["slotEnd"] - slot["slotStart"]) / 1000)
         vol = max(1e-6, float(sig.get("vol") or 0.001)) * math.sqrt(left / length)
         z = math.log(max(1e-12, sig["price"]) / slot["open"]) / vol
         p_up = 0.5 * (1 + math.erf(z / math.sqrt(2)))
-        p = p_up if sig["direction"] == "long" else 1 - p_up
+        return (p_up if sig["direction"] == "long" else 1 - p_up), min(1.0, left / length)
+
+    def fair_share_price(self, sig: dict, slot: dict) -> float:
+        """Practice price of the predicted side: chance the slot ends that way if price keeps moving
+        randomly at its recent volatility, plus a small spread like a real order book."""
+        p, _ = self._random_walk_chance(sig, slot)
         return min(0.97, max(0.03, p + PRACTICE_SPREAD))
 
-    def price_blockers(self, sig: dict, price: float) -> List[str]:
+    def win_chance(self, sig: dict, slot: dict) -> float:
+        """The bot's win estimate at this moment of the slot. At the start it is the signal's confidence; later
+        the price move since the round opened counts more and more, and the signal only adds its lean for
+        the time that is left. So mid-slot bets need a real edge over where the round stands now — a cheap
+        share on the side that is already losing is not mistaken for a bargain."""
+        p_rw, frac_left = self._random_walk_chance(sig, slot)
+        # the lean fades with the time left and near a decided round (4p(1-p) is 1 at 50/50, ~0 at 95/5)
+        lean = (sig["confidence"] / 100 - 0.5) * frac_left * 4 * p_rw * (1 - p_rw)
+        return min(0.99, max(0.01, p_rw + lean))
+
+    def price_blockers(self, sig: dict, price: float, slot: dict) -> List[str]:
         """Same for practice and real: the payout must reach the minimum, and the bot's win
-        estimate (confidence) must beat the share price by the minimum edge."""
+        estimate right now (see win_chance) must beat the share price by the minimum edge."""
         s = self.settings
         payout = 1 / price
         if payout < s["minPayout"]:
             return [f"payout {payout:.2f}x < {s['minPayout']:g}x"]
-        edge = sig["confidence"] / 100 - price
+        win = self.win_chance(sig, slot)
+        edge = win - price
         if edge < s["minEdge"]:
-            return [f"edge {edge * 100:.0f}% < {s['minEdge'] * 100:.0f}% (conf {sig['confidence']:.0f}% vs price {price:.2f})"]
+            return [f"edge {edge * 100:.0f}% < {s['minEdge'] * 100:.0f}% (win chance {win * 100:.0f}% vs price {price:.2f})"]
         return []
 
     def slot_bets_placed(self, slot_start: int, live: bool) -> int:
@@ -424,7 +440,7 @@ class Bot:
             blockers = blockers + ["max bets per slot reached"]
         price = self.fair_share_price(sig, slot) if not blockers else None
         if price is not None:
-            blockers = self.price_blockers(sig, price)
+            blockers = self.price_blockers(sig, price, slot)
         if blockers:
             slot["paperWait"] = blockers[0]
             return
@@ -447,7 +463,7 @@ class Bot:
         slot.pop("paperWait", None)
         left = int((slot["slotEnd"] - now_ms()) / 1000)
         log(f"PAPER bet {'UP' if sig['direction'] == 'long' else 'DOWN'} {sym} {amount:g} USDT @ {price:.2f} "
-            f"(payout {payout:.2f}x, edge {(sig['confidence'] / 100 - price) * 100:.0f}%, beat {slot['open']:.6g}, now {sig['price']:.6g}, conf {sig['confidence']:.0f}%, {left // 60}m{left % 60:02d}s left)")
+            f"(payout {payout:.2f}x, edge {(self.win_chance(sig, slot) - price) * 100:.0f}%, beat {slot['open']:.6g}, now {sig['price']:.6g}, conf {sig['confidence']:.0f}%, {left // 60}m{left % 60:02d}s left)")
 
     def log_new_slots(self, new_slots: List[tuple]):
         if not new_slots:
@@ -704,7 +720,7 @@ class Bot:
             q = self.pm.quote(m, outcome, amount)
             shares = float(q.get("amountOut") or 0)
             payout = shares / amount if amount else 0.0  # each winning share pays 1 USDT
-            why = self.price_blockers(sig, 1 / payout) if payout > 0 else ["no quote"]
+            why = self.price_blockers(sig, 1 / payout, slot) if payout > 0 else ["no quote"]
             if why:
                 slot["liveWait"] = why[0]
                 return  # wait: check again next scan

@@ -2,6 +2,12 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.3.3 — 2026-10-19
+
+- **5-minute rounds only** for everyone (15 min removed; anyone on 15 min moves to 5 min).
+- **Bets any time during the running round** — until 30 s before it closes (was: not in the last 60 s) — whenever the payout (≥ 1.40×) and the edge are good, not only at the start of a new round.
+- **Mid-round win estimate**: the bot's win chance now counts how far the price has already moved since the round opened; its signal only adds its lean for the time that is left. This stops it from buying a cheap share on the side that is already losing late in the round.
+
 ## v3.3.2 — 2026-10-19
 
 - **"Markets the bot bets on"** (Settings → Prediction Market) replaces the old search box: one button shows, for every coin, the exact Binance Prediction market and round ("BTC Up or Down 5m", round 18:40–18:45) each real bet goes to, with the live Up/Down prices. It uses the same lookup as real bets, so what you see is what the bot bets on.

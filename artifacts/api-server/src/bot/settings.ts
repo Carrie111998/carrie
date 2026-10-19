@@ -6,7 +6,7 @@ export const INDICATOR_KEYS = [
   "obv", "vwap", "supertrend", "ichimoku", "momentum", "linreg", "candles", "volume", "flow", "trend", "ai",
 ] as const;
 
-export const INTERVALS = ["5m", "15m"] as const;
+export const INTERVALS = ["5m"] as const; // v3.3.3: 5-minute rounds only
 /** Coins with Binance Prediction markets the bot trades. */
 export const COINS = ["BTCUSDT", "ETHUSDT", "BNBUSDT"] as const;
 /** How long a started bot keeps running (minutes); 0 = until stopped. */

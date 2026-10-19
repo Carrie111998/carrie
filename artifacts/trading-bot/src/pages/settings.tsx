@@ -17,10 +17,7 @@ const COINS = [
   { symbol: "ETHUSDT", name: "Ethereum", short: "ETH" },
   { symbol: "BNBUSDT", name: "BNB", short: "BNB" },
 ];
-const SLOTS: { v: BotSettings["interval"]; label: string }[] = [
-  { v: "5m", label: "5 min" },
-  { v: "15m", label: "15 min" },
-];
+const SLOTS: { v: BotSettings["interval"]; label: string }[] = [{ v: "5m", label: "5 min" }];
 const RUN_TIMES: { v: number; label: string }[] = [
   { v: 15, label: "15 min" }, { v: 30, label: "30 min" }, { v: 60, label: "1 hr" }, { v: 180, label: "3 hrs" },
   { v: 360, label: "6 hrs" }, { v: 720, label: "12 hrs" }, { v: 0, label: "∞ No limit" },
@@ -352,9 +349,10 @@ export default function Settings() {
           <Field label="Coins" hint="The bot predicts Up or Down for each coin you pick — for paper bets and live bets.">
             <Choice multi options={COINS.map((c) => ({ v: c.symbol, label: c.short, sub: c.name }))} value={draft.symbols} onChange={toggleCoin} />
           </Field>
-          <Field label="Prediction slot" hint="Each bet predicts whether the price will be higher or lower when the slot ends.">
-            <Choice options={SLOTS.map((x) => ({ v: x.v, label: x.label }))} value={draft.interval} onChange={(v) => set("interval", v)} />
-          </Field>
+          <p className="text-xs text-muted-foreground">
+            Every bet is on Binance's <b>5-minute</b> Up or Down rounds. The bot can bet at any moment of the running round
+            (until 30 s before it closes) whenever the payout and its edge are good enough.
+          </p>
         </div>
       </Panel>
 
