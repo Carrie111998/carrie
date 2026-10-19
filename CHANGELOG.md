@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.1.3 — 2026-10-19
+
+- Shared brain (admin's choice): minimum confidence back to 60% and fixed (auto-tune had raised it to 84% from ~50 bets, so no bet passed), and Down bets switched back on. Real betting stays in test mode until switched off by the user.
+
 ## v3.1.2 — 2026-10-19
 
 - **Fresh start** (admin's request, runs once on update): every user's practice trades, practice balance, AI model, indicator statistics and slot history are deleted, plus the pooled community dataset and the brain's change log. Kept: accounts, settings, API keys, wallet connections, the shared strategy settings, and anything involving real money (live trades, open live positions, unsettled real bets).

@@ -156,6 +156,24 @@ export function loadBrain(seed?: () => BotSettings | null): BrainFile {
     });
     save();
   }
+  // v3.1.3 (admin's choice): 60% minimum confidence fixed (auto-tune had pushed it to 84% on ~50
+  // bets, so nothing was bet) and Down bets back on
+  if (!brain.fixes.includes("settings-v313")) {
+    brain.fixes.push("settings-v313");
+    const was = { conf: brain.settings.minConfidence, tune: brain.settings.tuneThreshold, down: brain.settings.allowShort };
+    brain.settings.minConfidence = 60;
+    brain.settings.tuneThreshold = false;
+    brain.settings.allowShort = true;
+    brain.log.unshift({
+      time: Date.now(), source: "admin", by: "v3.1.3 update",
+      changes: [
+        { param: "minConfidence", from: String(was.conf), to: "60", reason: "admin: bet at 60%+ (84% blocked every bet)" },
+        { param: "tuneThreshold", from: String(was.tune), to: "false", reason: "keep the minimum fixed until there is much more data" },
+        { param: "allowShort", from: String(was.down), to: "true", reason: "admin: bet both Up and Down" },
+      ],
+    });
+    save();
+  }
   return brain;
 }
 
