@@ -1,14 +1,19 @@
 services:
   trader:
     build: .
-    container_name: paper-trader
+    container_name: binance-predict-bot
     restart: unless-stopped
     ports:
       - "8888:8888"
     volumes:
+      # users, trades, learning data and API keys live here — keep this volume
       - trader-data:/app/data
+    env_file:
+      - path: .env
+        required: false
     environment:
-      - DATA_DIR=/app/data
+      - PORT=8888
+      - BOT_DATA_DIR=/app/data
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.trader.rule=Host(`trader.kepexo.com`)"

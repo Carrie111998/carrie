@@ -1,5 +1,10 @@
 .git
 *.zip
-__pycache__
+**/node_modules
+**/dist
+**/.tsbuildinfo
+**/__pycache__
 *.pyc
 data/
+attached_assets/
+artifacts/mockup-sandbox/
