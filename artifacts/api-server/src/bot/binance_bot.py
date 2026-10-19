@@ -690,15 +690,22 @@ class Bot:
         }
         try:
             markets, _ = self.pm.search(symbol_words(sym)[0].upper())
-            m = match_slot_market(markets, symbol_words(sym), slot["slotEnd"])
+            m = match_slot_market(markets, symbol_words(sym), slot["slotEnd"], timeframe=s["interval"])
             if not m:
+                seen = "; ".join(f"{x['title'][:40]} (ends {time.strftime('%H:%M', time.gmtime(x['endTime'] / 1000)) if x['endTime'] else '?'})"
+                                 for x in markets[:6]) or "nothing"
+                log(f"Market search for {sym} {s['interval']} found: {seen}", "warn")
                 self.no_market_until[sym] = time.time() + 1800
                 log(f"No Binance Prediction market for {sym} at this slot length — real bets skip {sym}, checking again in 30 min", "warn")
                 slot["liveWait"] = f"no Binance Prediction market for {sym}"
                 return
-            if not m["outcomes"] or not pick_outcome(m, sig["direction"]):
+            if m.get("needsRoundCheck") or not m["outcomes"] or not pick_outcome(m, sig["direction"]):
                 detail = self.pm.market_detail(m["marketTopicId"])
                 m = next((x for x in detail if x["marketTopicId"] == m["marketTopicId"]), m)
+            if m.get("endTime") and abs(m["endTime"] - slot["slotEnd"]) > 90_000:
+                raise PredictionError(
+                    f"'{m['title']}' current round ends {time.strftime('%H:%M:%S', time.gmtime(m['endTime'] / 1000))} UTC, "
+                    f"not at this slot's close {time.strftime('%H:%M:%S', time.gmtime(slot['slotEnd'] / 1000))} — not betting")
             outcome = pick_outcome(m, sig["direction"])
             if not outcome:
                 raise PredictionError(f"could not find the {'Up' if sig['direction'] == 'long' else 'Down'} outcome in '{m['title']}'")
@@ -1159,7 +1166,7 @@ class Bot:
                 step = INTERVAL_SECONDS.get(self.settings["interval"], 300) * 1000
                 slot_end = (now_ms() // step + 1) * step
                 sym = self.settings["predictionSymbol"]
-                m = match_slot_market(markets, symbol_words(sym), slot_end)
+                m = match_slot_market(markets, symbol_words(sym), slot_end, timeframe=self.settings["interval"])
                 upcoming = sorted([x for x in markets if x["endTime"] and x["endTime"] > now_ms()], key=lambda x: x["endTime"])
                 emit("response", {
                     "ok": True, "query": query, "slotEnd": slot_end, "count": len(markets),

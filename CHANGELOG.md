@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.2.3 — 2026-10-19
+
+- **Real bets find ETH and BNB markets**: Binance runs recurring series titled "ETH Up or Down 5m", "BNB Up or Down 15m" etc. The bot now matches the series by coin and slot length (never a 15m/1h/1d market for a 5m slot), loads its details and only bets when the current round ends exactly at the slot's close. Before, it only accepted search results with a matching end time and listed outcomes, so ETH/BNB were reported as "no market". If nothing matches, the log lists what Binance returned.
+
 ## v3.2.2 — 2026-10-19
 
 - Prediction slots are 5 or 15 minutes only (1 hour removed); anyone on 1 hour moves to 5 minutes.

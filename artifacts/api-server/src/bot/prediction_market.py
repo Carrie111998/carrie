@@ -151,17 +151,29 @@ def pick_outcome(market: dict, direction: str) -> Optional[dict]:
     return (yes or no_free or [None])[0]
 
 
-def match_slot_market(markets: List[dict], symbol_words: List[str], slot_end_ms: int, tolerance_ms: int = 90_000) -> Optional[dict]:
+def match_slot_market(markets: List[dict], symbol_words: List[str], slot_end_ms: int, tolerance_ms: int = 90_000,
+                      timeframe: Optional[str] = None) -> Optional[dict]:
+    """Find the Up/Down market for this coin and slot.
+
+    Binance runs recurring series titled e.g. "ETH Up or Down 5m". Prefer a market whose end time
+    matches the slot; otherwise accept the series whose title names the coin and the slot length
+    (e.g. "5m") — the caller then loads its details and checks the current round's end time."""
     words = [w.lower() for w in symbol_words]
-    best, best_gap = None, None
-    for m in markets:
-        title = m["title"].lower()
-        if not any(w in title for w in words) or not m["endTime"] or not m["outcomes"]:
-            continue
-        gap = abs(m["endTime"] - slot_end_ms)
-        if gap <= tolerance_ms and (best_gap is None or gap < best_gap):
-            best, best_gap = m, gap
-    return best
+    tf = (timeframe or "").lower()
+    coin = [m for m in markets if any(w in m["title"].lower() for w in words)]
+    if tf:
+        named = [m for m in coin if re.search(rf"(?<![0-9]){re.escape(tf)}\b", m["title"].lower())]
+        if named:
+            coin = named
+    timed = [m for m in coin if m["endTime"] and abs(m["endTime"] - slot_end_ms) <= tolerance_ms]
+    if timed:
+        return min(timed, key=lambda m: abs(m["endTime"] - slot_end_ms))
+    if tf:
+        series = [m for m in coin if "up" in m["title"].lower() and "down" in m["title"].lower()
+                  and re.search(rf"(?<![0-9]){re.escape(tf)}\b", m["title"].lower())]
+        if series:
+            return dict(series[0], needsRoundCheck=True)
+    return None
 
 
 def symbol_words(symbol: str) -> List[str]:
