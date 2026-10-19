@@ -319,3 +319,78 @@ export default function AuthScreen() {
     </Shell>
   );
 }
+
+/** Shown when the admin has put this account on hold. */
+export function HeldScreen() {
+  const { user, signOut, refresh } = useAuth();
+  return (
+    <Shell title="Account on hold" subtitle="Trading on this account has been paused by the admin.">
+      <p className="text-sm text-muted-foreground">
+        Your bot is stopped and no paper or live trades will be placed. Please contact the admin to resume your account
+        {user ? ` (${user.email})` : ""}.
+      </p>
+      <div className="flex gap-2">
+        <Button variant="secondary" className="flex-1" onClick={() => void refresh()}>Check again</Button>
+        <Button variant="ghost" className="flex-1" onClick={signOut}>Log out</Button>
+      </div>
+    </Shell>
+  );
+}
+
+/** Change password form. `forced` = shown after an admin reset, before anything else. */
+export function ChangePasswordForm({ forced, onDone }: { forced?: boolean; onDone?: () => void }) {
+  const { signIn } = useAuth();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setError("");
+        if (next !== confirm) return setError("New passwords do not match");
+        setBusy(true);
+        try {
+          const r = await api<{ user: User; token: string }>("/auth/change-password", {
+            method: "POST",
+            body: { currentPassword: current, newPassword: next },
+          });
+          signIn(r.user, r.token);
+          setCurrent("");
+          setNext("");
+          setConfirm("");
+          onDone?.();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <Field label={forced ? "Current (default) password" : "Current password"}>
+        <PasswordInput value={current} onChange={setCurrent} autoComplete="current-password" placeholder={forced ? "123456" : undefined} />
+      </Field>
+      <Field label="New password">
+        <PasswordInput value={next} onChange={setNext} autoComplete="new-password" placeholder="At least 8 characters" />
+      </Field>
+      <Field label="Confirm new password">
+        <PasswordInput value={confirm} onChange={setConfirm} autoComplete="new-password" />
+      </Field>
+      <ErrorText error={error} />
+      <Button type="submit" className="w-full" disabled={busy}>{busy ? "Saving…" : "Save new password"}</Button>
+    </form>
+  );
+}
+
+export function ForcePasswordChange() {
+  const { signOut } = useAuth();
+  return (
+    <Shell title="Set a new password" subtitle="The admin reset your password to the default. Choose your own password to continue.">
+      <ChangePasswordForm forced />
+      <button type="button" onClick={signOut} className="w-full text-center text-xs text-muted-foreground">Log out</button>
+    </Shell>
+  );
+}

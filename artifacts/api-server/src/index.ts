@@ -24,7 +24,7 @@ const server = createServer(app);
 setupWebSocket(server);
 
 // Resume paper bots that were running before a restart.
-resumeEngines(listUsers().map((u) => u.id));
+resumeEngines(listUsers().filter((u) => !u.held).map((u) => u.id));
 
 // Pool every user's settled trades into the community dataset now and every 10 minutes.
 setTimeout(runCollective, 20_000);

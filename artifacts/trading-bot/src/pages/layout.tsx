@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Activity, Brain, History, LayoutDashboard, LogOut, Radar, Settings, UserRound, Wifi, WifiOff } from "lucide-react";
+import { Activity, Brain, History, LayoutDashboard, LogOut, Radar, Settings, ShieldCheck, UserRound, Wifi, WifiOff } from "lucide-react";
 import { useBot } from "@/hooks/useBot";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -35,6 +35,7 @@ function StatusPill() {
 export default function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { user, signOut } = useAuth();
+  const items = user?.isAdmin ? [...navItems, { href: "/admin", label: "Admin", icon: ShieldCheck }] : navItems;
 
   const isActive = (href: string) => (href === "/" ? location === "/" : location.startsWith(href));
 
@@ -53,7 +54,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <StatusPill />
         </div>
         <nav className="flex-1 px-2 py-2 space-y-0.5">
-          {navItems.map(({ href, label, icon: Icon }) => (
+          {items.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -102,8 +103,8 @@ export default function Layout({ children }: { children: ReactNode }) {
         <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>
 
         {/* Mobile bottom navigation */}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-5 border-t border-border bg-background/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
-          {navItems.map(({ href, label, icon: Icon }) => (
+        <nav className={`md:hidden fixed bottom-0 inset-x-0 z-30 grid ${items.length > 5 ? "grid-cols-6" : "grid-cols-5"} border-t border-border bg-background/95 backdrop-blur pb-[env(safe-area-inset-bottom)]`}>
+          {items.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}

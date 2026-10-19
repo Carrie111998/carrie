@@ -311,6 +311,20 @@ export interface User {
   id: string;
   username: string;
   email: string;
+  isAdmin: boolean;
+  held: boolean;
+  mustChangePassword: boolean;
+}
+
+export interface AdminUser extends User {
+  createdAt: number;
+  heldAt: number | null;
+  running: boolean;
+  liveEnabled: boolean;
+  paperTrades: number | null;
+  paperWinRate: number | null;
+  paperBalance: number | null;
+  liveTrades: number | null;
 }
 
 // ─── Fetch helpers ───────────────────────────────────────────────────────────
@@ -342,6 +356,11 @@ export class ApiError extends Error {
 }
 
 let onUnauthorized: (() => void) | null = null;
+let onAccountBlocked: (() => void) | null = null;
+/** Called when the server says the account was put on hold or needs a new password. */
+export const setAccountBlockedHandler = (fn: (() => void) | null) => {
+  onAccountBlocked = fn;
+};
 export const setUnauthorizedHandler = (fn: (() => void) | null) => {
   onUnauthorized = fn;
 };
@@ -366,6 +385,8 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   }
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith("/auth/")) onUnauthorized?.();
+    const code = (data as { code?: string } | null)?.code;
+    if (code === "ACCOUNT_HELD" || code === "PASSWORD_CHANGE_REQUIRED") onAccountBlocked?.();
     throw new ApiError(data?.error ?? `HTTP ${res.status}`, res.status);
   }
   return data as T;

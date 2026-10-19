@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Panel, fmtUsd } from "@/components/bits";
 import { useToast } from "@/hooks/use-toast";
 import { MarketFinder, PredictionWallet } from "@/components/PredictionWallet";
+import { ChangePasswordForm } from "@/pages/auth";
 
 const INTERVALS: BotSettings["interval"][] = ["1m", "3m", "5m", "15m", "30m", "1h", "4h"];
 
@@ -469,6 +470,12 @@ export default function Settings() {
               <Num value={v} onChange={(x) => setParam(k, x)} step={k === "bbStd" ? 0.1 : 1} />
             </Field>
           ))}
+        </div>
+      </Panel>
+
+      <Panel title="Change password">
+        <div className="max-w-sm">
+          <ChangePasswordForm />
         </div>
       </Panel>
 

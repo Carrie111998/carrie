@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
 import { getEngine } from "./engine";
-import { userFromToken } from "../auth";
+import { isAdmin, userFromToken } from "../auth";
 import { logger } from "../lib/logger";
 import { liveStream, SYMBOL_RE } from "../market";
 
@@ -13,6 +13,10 @@ export function setupWebSocket(server: Server) {
     const user = userFromToken(url.searchParams.get("token"));
     if (!user) {
       ws.close(4401, "Please log in");
+      return;
+    }
+    if (user.mustChangePassword || (user.held && !isAdmin(user))) {
+      ws.close(4423, "Account not available");
       return;
     }
     const engine = getEngine(user.id);

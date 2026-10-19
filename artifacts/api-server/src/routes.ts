@@ -1,10 +1,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { getEngine, type Engine } from "./bot/engine";
+import { getEngine, peekEngine, removeEngine, type Engine } from "./bot/engine";
 import { APP_VERSION } from "./version";
 import { getKlines, KLINE_INTERVALS, SYMBOL_RE } from "./market";
 import { bawDir, signinState, signout, startSignin, walletStatus } from "./prediction";
 import {
-  AuthError, bearer, emailEnabled, login, logout, publicUser, requireUser,
+  AuthError, adminDeleteUser, adminEditUser, adminResetPassword, adminSetHold, bearer, changePassword, emailEnabled,
+  listUsers, login, logout, publicUser, requireAdmin, requireUser,
   startReset, startSignup, verifyReset, verifySignup, type User,
 } from "./auth";
 
@@ -63,6 +64,11 @@ router.get("/auth/me", (_req, res) => {
   res.json({ user: publicUser(userOf(res)) });
 });
 
+router.post("/auth/change-password", wrap(async (req, res) => {
+  const { user, token } = await changePassword(userOf(res), req.body ?? {});
+  res.json({ user: publicUser(user), token });
+}));
+
 router.post("/auth/logout", (req, res) => {
   logout(bearer(req));
   res.json({ ok: true });
@@ -77,6 +83,54 @@ router.get("/market/klines", wrap(async (req, res) => {
     return;
   }
   res.json(await getKlines(symbol, interval, limit));
+}));
+
+// ─── Admin (carriepatrick80@gmail.com / ADMIN_EMAILS only) ──────────────────
+
+router.get("/admin/users", requireAdmin, (_req, res) => {
+  res.json(
+    listUsers().map((u) => {
+      const st = peekEngine(u.id)?.publicState() as Record<string, any> | undefined;
+      return {
+        ...publicUser(u),
+        createdAt: u.createdAt,
+        heldAt: u.heldAt ?? null,
+        running: Boolean(st?.status?.running),
+        liveEnabled: Boolean(st?.status?.liveEnabled),
+        paperTrades: st?.paper?.trades ?? null,
+        paperWinRate: st?.paper?.winRate ?? null,
+        paperBalance: st?.paper?.balance ?? null,
+        liveTrades: st?.live?.trades ?? null,
+      };
+    }),
+  );
+});
+
+router.patch("/admin/users/:id", requireAdmin, wrap(async (req, res) => {
+  res.json(publicUser(adminEditUser(String(req.params["id"]), req.body ?? {})));
+}));
+
+router.post("/admin/users/:id/reset-password", requireAdmin, wrap(async (req, res) => {
+  const { user, defaultPassword } = await adminResetPassword(userOf(res), String(req.params["id"]));
+  res.json({ user: publicUser(user), defaultPassword });
+}));
+
+router.post("/admin/users/:id/hold", requireAdmin, wrap(async (req, res) => {
+  const held = req.body?.held !== false;
+  const user = adminSetHold(userOf(res), String(req.params["id"]), held);
+  if (held) {
+    // hold = stop all trading now (paper and live); the bot stays stopped after resume until the user starts it
+    const e = getEngine(user.id); // loads it if needed so the stop is saved for restarts too
+    e.command({ cmd: "live", enabled: false });
+    e.command({ cmd: "stop" });
+  }
+  res.json(publicUser(user));
+}));
+
+router.delete("/admin/users/:id", requireAdmin, wrap(async (req, res) => {
+  const user = adminDeleteUser(userOf(res), String(req.params["id"]));
+  removeEngine(user.id, true);
+  res.json({ ok: true });
 }));
 
 router.get("/state", (_req, res) => {

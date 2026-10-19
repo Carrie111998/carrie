@@ -3,7 +3,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BotProvider } from "@/hooks/useBot";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
-import AuthScreen from "@/pages/auth";
+import AuthScreen, { ForcePasswordChange, HeldScreen } from "@/pages/auth";
+import Admin from "@/pages/admin";
 import Layout from "@/pages/layout";
 import Dashboard from "@/pages/dashboard";
 import Signals from "@/pages/signals";
@@ -21,6 +22,7 @@ function Router() {
         <Route path="/learning" component={Learning} />
         <Route path="/history" component={History} />
         <Route path="/settings" component={Settings} />
+        <Route path="/admin" component={Admin} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
@@ -31,6 +33,8 @@ function Gate() {
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen bg-background" />;
   if (!user) return <AuthScreen />;
+  if (user.mustChangePassword) return <ForcePasswordChange />;
+  if (user.held && !user.isAdmin) return <HeldScreen />;
   return (
     // keyed by user so switching accounts starts from a clean state
     <BotProvider key={user.id}>

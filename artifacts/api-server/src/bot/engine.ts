@@ -1,5 +1,5 @@
 import { ChildProcessWithoutNullStreams, execFile, spawn } from "child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
@@ -64,6 +64,7 @@ export class Engine {
   private listeners = new Set<Listener>();
   private pending = new Map<string, { resolve: (v: unknown) => void; timer: NodeJS.Timeout }>();
   private restartTimer: NodeJS.Timeout | null = null;
+  private stopped = false;
   private readonly settingsFile: string;
   private readonly credentialsFile: string;
   private readonly runtimeFile: string;
@@ -143,8 +144,9 @@ export class Engine {
     });
     proc.stderr.on("data", (chunk: Buffer) => logger.warn({ userId: this.userId, stderr: chunk.toString().trim() }, "Engine stderr"));
     proc.on("exit", (code) => {
-      logger.error({ userId: this.userId, code }, "Python engine exited — restarting in 3s");
       this.proc = null;
+      if (this.stopped) return; // shut down on purpose (account deleted)
+      logger.error({ userId: this.userId, code }, "Python engine exited — restarting in 3s");
       this.buffer = "";
       if (this.state) (this.state["status"] as Record<string, unknown>)["running"] = false;
       this.broadcast("state", this.publicState());
@@ -228,6 +230,14 @@ export class Engine {
     }
   }
 
+  /** Stop the engine for good (account deleted). */
+  shutdown() {
+    this.stopped = true;
+    if (this.restartTimer) clearTimeout(this.restartTimer);
+    this.proc?.kill();
+    this.proc = null;
+  }
+
   publicState() {
     return { ...(this.state ?? {}), engineOnline: this.proc !== null, logs: this.logs.slice(0, 60) };
   }
@@ -285,6 +295,15 @@ export function getEngine(userId: string): Engine {
     e.start();
   }
   return e;
+}
+
+export const peekEngine = (userId: string) => engines.get(userId);
+
+/** Stop a user's bot process; optionally delete all their data (trades, keys, wallet session). */
+export function removeEngine(userId: string, deleteData: boolean) {
+  engines.get(userId)?.shutdown();
+  engines.delete(userId);
+  if (deleteData) rmSync(userDataDir(userId), { recursive: true, force: true });
 }
 
 /** On server boot, resume bots that were running (paper only — live trading always needs a fresh confirmation). */

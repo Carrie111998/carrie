@@ -2,6 +2,18 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v2.1.0 — 2026-10-19 (branch `release/v2.1.0`)
+
+**Admin user management.**
+
+- **Admin area** (menu → Admin) for `carriepatrick80@gmail.com` only (more admins via the `ADMIN_EMAILS` setting). Lists every user with username, email, join date, status, bot/live state, trades and balance, with search.
+- **Edit** a user's username or email.
+- **Reset password** to the default `123456` — the user is logged out everywhere and must choose a new password at the next login before using the bot (the default can't be kept).
+- **Hold all trades**: stops the user's bot and live trading at once and blocks the account ("Account on hold — contact the admin"); held bots don't restart after a server reboot. **Resume** reopens the account.
+- **Delete account**: removes the user, bot, trades, settings, API keys and wallet session (type the username to confirm).
+- The admin can't hold, reset or delete their own account.
+- **Change password** for every user in Settings.
+
 ## v2.0.0 — 2026-10-19 (branch `release/v2.0.0`)
 
 **Fixed-bet rule and community learning for every user.**

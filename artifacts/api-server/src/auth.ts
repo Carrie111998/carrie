@@ -17,6 +17,11 @@ export interface User {
   passwordHash: string;
   salt: string;
   createdAt: number;
+  /** on hold by the admin: bot stopped, account blocked until resumed */
+  held?: boolean;
+  heldAt?: number;
+  /** set after an admin password reset — user must pick a new password first */
+  mustChangePassword?: boolean;
 }
 
 interface Session {
@@ -85,8 +90,17 @@ export class AuthError extends Error {
   }
 }
 
+// Admin accounts (comma-separated emails). Only these can open the Admin area.
+const ADMIN_EMAILS = (process.env["ADMIN_EMAILS"] ?? "carriepatrick80@gmail.com")
+  .split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+const DEFAULT_RESET_PASSWORD = process.env["DEFAULT_RESET_PASSWORD"] ?? "123456";
+
+export const isAdmin = (u: User) => ADMIN_EMAILS.includes(u.email);
 export const listUsers = () => users;
-export const publicUser = (u: User) => ({ id: u.id, username: u.username, email: u.email });
+export const publicUser = (u: User) => ({
+  id: u.id, username: u.username, email: u.email,
+  isAdmin: isAdmin(u), held: Boolean(u.held), mustChangePassword: Boolean(u.mustChangePassword),
+});
 
 function validatePassword(pw: string) {
   if (pw.length < 8) throw new AuthError("Password must be at least 8 characters");
@@ -239,6 +253,84 @@ export async function verifyReset(body: Record<string, unknown>) {
   return { user, token: createSession(user.id) };
 }
 
+export async function changePassword(user: User, body: Record<string, unknown>) {
+  const current = String(body["currentPassword"] ?? "");
+  const next = String(body["newPassword"] ?? "");
+  const { hash } = await hashPassword(current, user.salt);
+  if (!safeEqualHex(user.passwordHash, hash)) throw new AuthError("Current password is wrong", 400);
+  validatePassword(next);
+  if (next === DEFAULT_RESET_PASSWORD) throw new AuthError("Choose a password different from the default");
+  const h = await hashPassword(next);
+  user.salt = h.salt;
+  user.passwordHash = h.hash;
+  user.mustChangePassword = false;
+  save(USERS_FILE, users);
+  sessions = Object.fromEntries(Object.entries(sessions).filter(([, s]) => s.userId !== user.id));
+  return { user, token: createSession(user.id) };
+}
+
+// ─── Admin ───────────────────────────────────────────────────────────────────
+
+function findUser(id: string) {
+  const u = users.find((x) => x.id === id);
+  if (!u) throw new AuthError("User not found", 404);
+  return u;
+}
+
+function notSelf(admin: User, target: User, what: string) {
+  if (admin.id === target.id) throw new AuthError(`You can't ${what} your own admin account`);
+}
+
+export function adminEditUser(id: string, body: Record<string, unknown>) {
+  const u = findUser(id);
+  if (body["username"] !== undefined) {
+    const username = String(body["username"]).trim();
+    if (!USERNAME_RE.test(username)) throw new AuthError("Username must be 3–24 letters, numbers, _ . or -");
+    if (users.some((x) => x.id !== id && x.username.toLowerCase() === username.toLowerCase())) throw new AuthError("Username is already taken");
+    u.username = username;
+  }
+  if (body["email"] !== undefined) {
+    const email = normEmail(body["email"]);
+    if (!EMAIL_RE.test(email)) throw new AuthError("Enter a valid email address");
+    if (users.some((x) => x.id !== id && x.email === email)) throw new AuthError("Another account uses this email");
+    u.email = email;
+  }
+  save(USERS_FILE, users);
+  return u;
+}
+
+export async function adminResetPassword(admin: User, id: string) {
+  const u = findUser(id);
+  notSelf(admin, u, "reset the password of");
+  const { salt, hash } = await hashPassword(DEFAULT_RESET_PASSWORD);
+  u.salt = salt;
+  u.passwordHash = hash;
+  u.mustChangePassword = true;
+  save(USERS_FILE, users);
+  sessions = Object.fromEntries(Object.entries(sessions).filter(([, s]) => s.userId !== id));
+  save(SESSIONS_FILE, sessions);
+  return { user: u, defaultPassword: DEFAULT_RESET_PASSWORD };
+}
+
+export function adminSetHold(admin: User, id: string, held: boolean) {
+  const u = findUser(id);
+  notSelf(admin, u, "hold");
+  u.held = held;
+  u.heldAt = held ? Date.now() : undefined;
+  save(USERS_FILE, users);
+  return u;
+}
+
+export function adminDeleteUser(admin: User, id: string) {
+  const u = findUser(id);
+  notSelf(admin, u, "delete");
+  users = users.filter((x) => x.id !== id);
+  sessions = Object.fromEntries(Object.entries(sessions).filter(([, s]) => s.userId !== id));
+  save(USERS_FILE, users);
+  save(SESSIONS_FILE, sessions);
+  return u;
+}
+
 // ─── Sessions ────────────────────────────────────────────────────────────────
 
 function createSession(userId: string) {
@@ -265,6 +357,9 @@ export function logout(token: string | undefined) {
 
 export const bearer = (req: Request) => req.header("authorization")?.replace(/^Bearer\s+/i, "") || undefined;
 
+// paths a held account / an account needing a new password may still use
+const ALWAYS_ALLOWED = new Set(["/auth/me", "/auth/logout", "/auth/change-password"]);
+
 export function requireUser(req: Request, res: Response, next: NextFunction) {
   const user = userFromToken(bearer(req));
   if (!user) {
@@ -272,5 +367,24 @@ export function requireUser(req: Request, res: Response, next: NextFunction) {
     return;
   }
   res.locals["user"] = user;
+  if (!ALWAYS_ALLOWED.has(req.path)) {
+    if (user.mustChangePassword) {
+      res.status(403).json({ error: "Please set a new password first", code: "PASSWORD_CHANGE_REQUIRED" });
+      return;
+    }
+    if (user.held && !isAdmin(user)) {
+      res.status(423).json({ error: "Your account is on hold — please contact the admin", code: "ACCOUNT_HELD" });
+      return;
+    }
+  }
+  next();
+}
+
+export function requireAdmin(_req: Request, res: Response, next: NextFunction) {
+  const user = res.locals["user"] as User | undefined;
+  if (!user || !isAdmin(user)) {
+    res.status(403).json({ error: "Admins only" });
+    return;
+  }
   next();
 }
