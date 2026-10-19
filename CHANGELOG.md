@@ -2,7 +2,7 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
-## v2.0.0 — 2026-10-19
+## v2.0.0 — 2026-10-19 (branch `release/v2.0.0`)
 
 **Fixed-bet rule and community learning for every user.**
 
@@ -14,7 +14,7 @@ All versions of the bot. Older versions are kept as zip files in [`archive/`](ar
 
 ## v1.0.0 — 2026-10-19
 
-First Binance release (archived as `archive/binance-predict-bot-v1.0.0.zip`, git tag `v1.0.0`).
+First Binance release (archived as `archive/binance-predict-bot-v1.0.0.zip`, branch `release/v1.0.0`).
 
 - Self-learning Binance bot: 18 indicators + online AI model, combined into one prediction with confidence.
 - Paper trading (dummy Binance Prediction Up/Down bets per slot, or dummy Spot), loss study, auto-tune, calibration on history.
