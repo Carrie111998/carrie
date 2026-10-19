@@ -105,6 +105,7 @@ export interface Trade {
   regime: string;
   heldCandles: number;
   votes: Record<string, number>;
+  kind?: "prediction";
 }
 
 export interface Stats {

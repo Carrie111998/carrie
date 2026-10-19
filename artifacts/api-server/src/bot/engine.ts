@@ -179,6 +179,8 @@ export class Engine {
         break;
       case "log": {
         const entry = ev.data as LogEntry;
+        // trades, tuning and errors also go to the server log for troubleshooting (Hostinger → Docker logs)
+        if (entry.level !== "info") logger.info({ userId: this.userId, level: entry.level, message: entry.message }, "bot");
         this.logs.unshift(entry);
         this.logs.length = Math.min(this.logs.length, 200);
         this.broadcast("log", entry);
