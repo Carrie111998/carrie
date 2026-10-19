@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.0.7 — 2026-10-19
+
+- Indicator weights set from the analysis of all 103 settled trades: on 5-minute slots the "snap-back" indicators won most (Bollinger 58%, Stochastic 56%, AI 55%, Williams %R 54%) and trend followers lost (OBV 39%, CCI 42%, MACD/Momentum 43%), so the former now count up to 1.8× and the latter 0.3–0.6×. Auto-tune keeps refining weights from new trades.
+
 ## v3.0.6 — 2026-10-19
 
 - Every bet (practice and real) needs at least **60% confidence**; auto-tune keeps that fixed (admin can change it in the shared brain).

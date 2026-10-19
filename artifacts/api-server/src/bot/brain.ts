@@ -101,6 +101,25 @@ export function loadBrain(seed?: () => BotSettings | null): BrainFile {
     });
     save();
   }
+  // v3.0.7: weights from the analysis of all settled trades (5-minute slots reward "snap-back"
+  // indicators and punish trend followers). Auto-tune keeps refining them from new trades.
+  if (!brain.fixes.includes("weights-v307")) {
+    brain.fixes.push("weights-v307");
+    const w: Record<string, number> = {
+      bollinger: 1.8, stochastic: 1.6, williams: 1.4, ai: 1.4, supertrend: 1.2, rsi: 1.0, candles: 1.0, mfi: 1.0,
+      adx: 0.8, volume: 0.8, ichimoku: 0.7, ema: 0.6, linreg: 0.6, vwap: 0.6, macd: 0.5, momentum: 0.5, cci: 0.5, obv: 0.3, trend: 0.5,
+    };
+    const inds = (brain.settings.indicators ?? {}) as Record<string, { enabled: boolean; weight: number }>;
+    const changes: TuneEntry["changes"] = [];
+    for (const [k, v] of Object.entries(w)) {
+      const cur = inds[k] ?? { enabled: true, weight: 1 };
+      if (cur.weight !== v) changes.push({ param: `weight.${k}`, from: String(cur.weight), to: String(v), reason: "trade analysis v3.0.7" });
+      inds[k] = { ...cur, enabled: true, weight: v };
+    }
+    brain.settings.indicators = inds as BotSettings["indicators"];
+    brain.log.unshift({ time: Date.now(), source: "admin", by: "v3.0.7 trade analysis", changes });
+    save();
+  }
   return brain;
 }
 
