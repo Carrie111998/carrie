@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -25,7 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from prediction_market import BSC_CHAIN_ID, PredictionError, find_markets
 
-BASE_URL = "https://api.binance.com"
+BASE_URL = os.environ.get("BINANCE_PREDICTION_API_BASE") or "https://api.binance.com"  # override for offline tests
 PREFIX = "/sapi/v1/w3w/wallet/prediction"
 WEI = 10 ** 18  # amounts are in wei (18 decimals): 1 USDT = 10^18
 

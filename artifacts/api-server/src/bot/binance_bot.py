@@ -442,7 +442,9 @@ class Bot:
         if price is not None:
             blockers = self.price_blockers(sig, price, slot)
         if blockers:
-            slot["paperWait"] = blockers[0]
+            # keep the reason it waited for, not just "too late" once the round runs out
+            if not (blockers == ["too late in the slot"] and slot.get("paperWait")):
+                slot["paperWait"] = blockers[0]
             return
         payout = 1 / price
         bal = self.data["paper"]["balance"]
@@ -677,7 +679,9 @@ class Bot:
     # ─── Binance Prediction Market bets ──────────────────────────────────────
 
     def prediction_exposure(self) -> float:
-        return sum(b["amount"] for b in self.data["predictionBets"] if b["status"] == "placed" and b.get("result") is None)
+        cutoff = now_ms() - 30 * 60_000  # a round that ended 30+ min ago is no longer at risk, settled or not
+        return sum(b["amount"] for b in self.data["predictionBets"]
+                   if b["status"] == "placed" and b.get("result") is None and b["slotEnd"] > cutoff)
 
     def try_live_bet(self, sym: str, slot: dict, sig: dict, blockers: List[str]):
         s = self.settings
@@ -697,8 +701,10 @@ class Bot:
         if self.live_loss_today() >= s["liveDailyLossLimitUsdt"]:
             reasons.append("daily loss limit reached")
             self.live_enabled = False
+            self.add_error(f"Daily loss limit reached ({self.live_loss_today():.2f} USDT lost today) — real betting switched OFF")
         if reasons:
-            slot["liveWait"] = reasons[0]
+            if not (reasons == ["too late in the slot"] and slot.get("liveWait")):
+                slot["liveWait"] = reasons[0]
             return
         bet = {
             "id": uuid.uuid4().hex[:12], "symbol": sym, "slotStart": slot["slotStart"], "slotEnd": slot["slotEnd"],
@@ -734,7 +740,8 @@ class Bot:
                 bet["status"] = "placed"
                 self.pm_balance_at = 0  # refresh balance next cycle
             log(f"PREDICTION {'quote (dry run)' if dry else 'BET'} {bet['outcome']} {amount:g} USDT "
-                f"→ {shares:.4g} shares @ {bet['avgPrice']} (payout {payout:.2f}x) on '{bet['marketTitle']}'", "trade")
+                f"→ {shares:.4g} shares @ {float(bet['avgPrice'] or amount / shares if shares else 0):.3g} (payout {payout:.2f}x) "
+                f"on '{bet['marketTitle']}'", "trade")
         except PredictionError as e:
             bet["status"] = "failed"
             bet["reason"] = str(e)
@@ -781,23 +788,23 @@ class Bot:
     def settle_prediction_bet(self, sym: str, slot: dict):
         bet = next((b for b in self.data["predictionBets"] if b["symbol"] == sym and b["slotStart"] == slot["slotStart"]
                     and b["status"] in ("placed", "dry_run") and b["result"] is None), None)
-        if not bet or slot["hit"] is None:
-            if bet and slot["actual"] == "flat":
-                bet["result"] = "flat"
+        if not bet or slot["actual"] is None:
             return
-        won = slot["hit"]
+        # judged by the side this bet bought (it can differ from the slot's opening call, e.g. a mid-round bet);
+        # "no change" pays neither Up nor Down
+        won = slot["actual"] == ("up" if bet["direction"] == "long" else "down")
         shares = bet["shares"] or 0.0
         bet["result"] = "win" if won else "loss"
         bet["pnl"] = round((shares if won else 0.0) - bet["amount"], 4)  # estimate; market oracle decides the payout
         if bet["status"] != "placed":
             return
         trade = {
-            "id": bet["id"], "mode": "live", "symbol": sym, "side": bet["direction"], "qty": shares,
+            "id": bet["id"], "mode": "live", "kind": "prediction", "symbol": sym, "side": bet["direction"], "qty": shares,
             "entryPrice": slot["open"], "exitPrice": slot["close"], "quote": bet["amount"], "openTime": bet["createdAt"],
             "closeTime": now_ms(), "confidence": bet["confidence"], "score": 0, "votes": {}, "regime": "prediction",
             "adx": 0, "heldCandles": 1, "orderId": bet["orderId"], "pnl": bet["pnl"], "fees": 0.0,
             "pnlPct": round(100 * bet["pnl"] / bet["amount"], 3) if bet["amount"] else 0.0,
-            "result": bet["result"], "exitReason": "slot_settled",
+            "result": bet["result"], "exitReason": "slot_won" if won else "slot_lost",
         }
         self.data["trades"].insert(0, trade)
         day = time.strftime("%Y-%m-%d", time.gmtime())
@@ -1048,7 +1055,9 @@ class Bot:
             "avgWin": round(gross_win / len(wins), 4) if wins else 0.0,
             "avgLoss": round(-gross_loss / len(losses), 4) if losses else 0.0,
             "profitFactor": round(gross_win / gross_loss, 2) if gross_loss > 0 else None,
-            "open": len(self.positions(mode)),
+            "open": len(self.positions(mode)) + (sum(1 for b in self.data["predictionBets"] if b["status"] == "placed"
+                                                      and b.get("result") is None and b["slotEnd"] > now_ms() - 30 * 60_000)
+                                                 if mode == "live" else 0),
         }
 
     def learning_view(self) -> dict:
@@ -1207,6 +1216,11 @@ class Bot:
                 acct = self.refresh_live_account()
                 if not acct.get("ok"):
                     emit("response", {"ok": False, "error": acct.get("error")}, reqId=req)
+                    return
+                lost, limit = self.live_loss_today(), float(self.settings["liveDailyLossLimitUsdt"])
+                if lost >= limit:
+                    emit("response", {"ok": False, "error": f"Daily loss limit reached: {lost:.2f} USDT lost today (limit {limit:g}). "
+                                                            "Raise the limit in Settings or wait until 00:00 UTC."}, reqId=req)
                     return
                 self.live_enabled = True
                 if not self.running:

@@ -172,7 +172,7 @@ export function MarketFinder() {
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
         Shows the exact Binance Prediction market and round each real bet goes to right now — the same “BTC / ETH / BNB Up or Down
-        5m / 15m” markets you see in the Binance app, found the same way the bot finds them when it bets.
+        5m” markets you see in the Binance app, found the same way the bot finds them when it bets.
       </p>
       <Button
         variant="secondary"

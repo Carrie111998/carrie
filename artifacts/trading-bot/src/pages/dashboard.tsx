@@ -35,8 +35,11 @@ function LiveConfirm({ open, onOpenChange, testnet, amount }: { open: boolean; o
             <div className="space-y-2 text-sm">
               {prediction ? (
                 <p>
-                  At the start of every {settings?.interval} slot the bot will {dryRun ? "get a quote (no money is spent)" : <>bet <b>{fmtUsd(settings?.predictionBetUsdt)}</b> USDT</>}{" "}
-                  on Up or Down for <b>{settings?.predictionSymbol}</b> on Binance Prediction Market when its confidence passes your minimum.
+                  On Binance's 5-minute Up or Down rounds for{" "}
+                  <b>{settings?.symbols.map((x) => x.replace("USDT", "")).join(", ")}</b> the bot will{" "}
+                  {dryRun ? "only get quotes (test mode — no money is spent)" : <>bet <b>{fmtUsd(settings?.predictionBetUsdt)}</b> USDT</>} at any
+                  moment of a round when its confidence is at least <b>{settings?.minConfidence}%</b>, a win pays at least{" "}
+                  <b>{settings?.minPayout}×</b> and its win chance beats the price. At most one bet per coin per round.
                 </p>
               ) : (
                 <p>
@@ -83,8 +86,8 @@ function LiveBetRow({ b }: { b: PredictionBet }) {
             {b.status === "placed" ? "LIVE" : "TEST"}
           </span>
         </div>
-        <div className="text-xs text-muted-foreground mt-0.5 font-mono truncate">
-          {fmtUsd(b.amount)} USDT{b.payout ? ` · ${b.payout}× payout` : ""} · {b.marketTitle ?? "Binance Prediction"} · ends {fmtTime(b.slotEnd)}
+        <div className="text-xs text-muted-foreground mt-0.5 font-mono break-words">
+          bet {fmtUsd(b.amount)}{b.payout ? ` · ${b.payout.toFixed(2)}× payout` : ""} · {b.marketTitle ?? "Binance Prediction"} · ends {fmtTime(b.slotEnd)}
         </div>
       </div>
       <div className="text-right flex-shrink-0">

@@ -86,6 +86,8 @@ def main(data_dir: str):
             c = {k: t.get(k) for k in KEEP}
             c["user"] = tag
             c["mode"] = c.get("mode") or "paper"
+            if t.get("regime") == "prediction":
+                c["kind"] = "prediction"  # real Prediction bets recorded before v3.3.5 had no kind
             # direction the price actually moved while the trade was open (for indicator accuracy)
             entry, exit_ = t.get("entryPrice"), t.get("exitPrice")
             c["actual"] = 0 if not entry or not exit_ else (1 if exit_ > entry else -1 if exit_ < entry else 0)
@@ -96,7 +98,7 @@ def main(data_dir: str):
     seen, unique = set(), []
     for t in sorted(trades, key=lambda t: t.get("closeTime") or 0):
         # same coin, same side, same slot (prediction bets share the slot's opening price)
-        key = (t.get("symbol"), t.get("side"), t.get("kind"), t.get("entryPrice"), (t.get("openTime") or 0) // 3_600_000)
+        key = (t.get("mode"), t.get("symbol"), t.get("side"), t.get("kind"), t.get("entryPrice"), (t.get("openTime") or 0) // 3_600_000)
         if key in seen:
             continue
         seen.add(key)

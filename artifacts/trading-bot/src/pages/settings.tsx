@@ -120,7 +120,8 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: stri
   );
 }
 
-function ApiKeys() {
+/** Binance API key form. `prediction`: the key is used for Prediction bets (live account only, no testnet). */
+function ApiKeys({ prediction = false }: { prediction?: boolean }) {
   const { run, state } = useBot();
   const { toast } = useToast();
   const [info, setInfo] = useState<CredentialInfo | null>(null);
@@ -145,7 +146,7 @@ function ApiKeys() {
   async function save() {
     setBusy(true);
     await run("Could not save API keys", async () => {
-      report(await api<LiveAccount>("/credentials", { method: "POST", body: { apiKey, apiSecret, testnet } }));
+      report(await api<LiveAccount>("/credentials", { method: "POST", body: { apiKey, apiSecret, testnet: prediction ? false : testnet } }));
       setInfo(await api<CredentialInfo>("/credentials"));
       setApiKey("");
       setApiSecret("");
@@ -160,12 +161,12 @@ function ApiKeys() {
           <div>
             Status:{" "}
             {info?.hasCredentials ? (
-              <b className="text-emerald-700">key {info.keyPreview} saved ({info.testnet ? "testnet" : "LIVE"})</b>
+              <b className="text-emerald-700">key {info.keyPreview} saved{prediction ? "" : ` (${info.testnet ? "testnet" : "LIVE"})`}</b>
             ) : (
               <b className="text-muted-foreground">no key saved</b>
             )}
           </div>
-          {acct && <div>Last check: {acct.ok ? `OK · ${fmtUsd(acct.usdt)} USDT free${acct.canTrade ? "" : " · trading NOT permitted"}` : acct.error}</div>}
+          {acct && !prediction && <div>Last check: {acct.ok ? `OK · ${fmtUsd(acct.usdt)} USDT free${acct.canTrade ? "" : " · trading NOT permitted"}` : acct.error}</div>}
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="API key">
@@ -187,12 +188,12 @@ function ApiKeys() {
             </div>
           </Field>
         </div>
-        <Toggle
+        {!prediction && <Toggle
           label="Use Binance Spot Testnet"
           hint="Recommended first. Create free testnet keys at testnet.binance.vision. Turn off only for real-money trading."
           checked={testnet}
           onChange={setTestnet}
-        />
+        />}
         <div className="flex flex-wrap gap-2">
           <Button onClick={save} disabled={busy || !apiKey || !apiSecret}>
             <Save className="h-4 w-4 mr-1.5" /> Save & test keys
@@ -219,8 +220,10 @@ function ApiKeys() {
         </div>
         <p className="text-[11px] text-muted-foreground flex gap-1.5">
           <ShieldAlert className="h-3.5 w-3.5 flex-shrink-0 text-amber-700" />
-          Create keys with only "Enable Spot & Margin Trading" — never enable withdrawals — and restrict them to your server's IP. Keys are stored
-          on the server only (data/credentials.json) and are never sent back to the browser.
+          {prediction
+            ? 'Use a live (not testnet) key with "Prediction Trading" ticked — never enable withdrawals — and restrict it to this server\'s IP.'
+            : 'Create keys with only "Enable Spot & Margin Trading" — never enable withdrawals — and restrict them to your server\'s IP.'}{" "}
+          Keys are stored on the server only and are never sent back to the browser.
         </p>
       </div>
     </div>
@@ -244,7 +247,7 @@ function PredictionApiKey({ funding, onFunding }: { funding: "MPC" | "CEX"; onFu
           <li>In <b>API Management</b>, tick <b>Prediction Trading</b> on your API key (no withdrawals), and allow this server's IP.</li>
         </ol>
       </div>
-      <ApiKeys />
+      <ApiKeys prediction />
       <Field label="Pay bets from">
         <Choice
           options={[

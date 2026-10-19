@@ -131,7 +131,9 @@ export default function History() {
                     <SideBadge side={t.side} />
                   )}
                   <ModeBadge mode={t.mode} />
-                  <span className="text-[11px] text-muted-foreground">{t.exitReason.replace("_", " ")}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {(t.exitReason === "slot_settled" ? (t.pnl >= 0 ? "slot_won" : "slot_lost") : t.exitReason).replace("_", " ")}
+                  </span>
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground font-mono truncate">
                   {fmtDateTime(t.openTime)} · bet {fmtUsd(t.quote)} · {fmtPrice(t.entryPrice)} → {fmtPrice(t.exitPrice)} · conf {t.confidence.toFixed(0)}% · {t.regime}

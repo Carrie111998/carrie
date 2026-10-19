@@ -377,7 +377,7 @@ export default function LiveMarket() {
             All pairs: <b className="text-foreground">{state?.slots?.accuracy != null ? `${state.slots.accuracy}%` : "—"}</b> ({state?.slots?.hits ?? 0}/
             {state?.slots?.scored ?? 0})
           </span>
-          <span>Slot length = candle interval ({interval}), set in Settings</span>
+          <span>Each round lasts 5 minutes, like Binance Prediction</span>
         </div>
       </div>
     </section>

@@ -241,6 +241,46 @@ export class Engine {
     return readJson<{ running: boolean }>(this.runtimeFile)?.running === true;
   }
 
+  /** Was live betting on before the server restarted? Saved whenever the engine reports a change. */
+  get wasLive() {
+    const rt = readJson<{ running?: boolean; live?: boolean }>(this.runtimeFile);
+    return rt?.running === true && rt.live === true;
+  }
+
+  // while live betting is being restored after a restart, the engine's first "live off" state must not
+  // overwrite the saved choice
+  private restoringLive = false;
+  private savedLive: boolean | null = null;
+
+  private saveLive(live: boolean) {
+    if (this.restoringLive || this.savedLive === live) return;
+    this.savedLive = live;
+    const rt = readJson<Record<string, unknown>>(this.runtimeFile) ?? {};
+    writeJson(this.runtimeFile, { ...rt, live });
+  }
+
+  /** Switch live betting back on after a server restart or deploy, as the user left it. */
+  async restoreLive() {
+    this.restoringLive = true;
+    try {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const r = await this.request<{ ok?: boolean; error?: string }>({ cmd: "live", enabled: true }, 60_000);
+          if (r?.ok !== false) {
+            logger.info({ userId: this.userId }, "Live betting restored after server restart");
+            return;
+          }
+          logger.warn({ userId: this.userId, error: r.error, attempt }, "Could not restore live betting");
+        } catch (err) {
+          logger.warn({ userId: this.userId, err: String(err), attempt }, "Could not restore live betting");
+        }
+        await new Promise((res) => setTimeout(res, 30_000));
+      }
+    } finally {
+      this.restoringLive = false;
+    }
+  }
+
   start() {
     if (this.proc) return;
     logger.info({ userId: this.userId, dataDir: this.dataDir }, "Starting Python bot engine");
@@ -266,7 +306,7 @@ export class Engine {
     proc.stderr.on("data", (chunk: Buffer) => logger.warn({ userId: this.userId, stderr: chunk.toString().trim() }, "Engine stderr"));
     proc.on("exit", (code) => {
       this.proc = null;
-      // live betting the user switched on survives an engine crash (a full server restart still turns it off)
+      // live betting the user switched on survives an engine crash (and a server restart, see resumeEngines)
       const wasLive = Boolean((this.state?.["status"] as Record<string, unknown> | undefined)?.["liveEnabled"]);
       if (this.stopped) return; // shut down on purpose (account deleted)
       logger.error({ userId: this.userId, code }, "Python engine exited — restarting in 3s");
@@ -277,11 +317,7 @@ export class Engine {
         this.restartTimer = null;
         this.start();
         if (this.wasRunning) this.send({ cmd: "start" });
-        if (wasLive) {
-          this.request({ cmd: "live", enabled: true }, 60_000)
-            .then((r) => logger.info({ userId: this.userId, r }, "Live betting restored after engine restart"))
-            .catch((err) => logger.warn({ userId: this.userId, err: String(err) }, "Could not restore live betting"));
-        }
+        if (wasLive) void this.restoreLive();
       }, 3000);
     });
     this.send({ cmd: "init", dataDir: this.dataDir, settings: this.engineSettings(), credentials: this.credentials ?? {} });
@@ -321,12 +357,13 @@ export class Engine {
       const mins = this.settings.runDurationMin;
       this.stopAt = opts.stopAt !== undefined ? opts.stopAt : mins > 0 ? Date.now() + mins * 60_000 : null;
       this.armStopTimer();
-      writeJson(this.runtimeFile, { running: true, stopAt: this.stopAt });
+      writeJson(this.runtimeFile, { ...(readJson<Record<string, unknown>>(this.runtimeFile) ?? {}), running: true, stopAt: this.stopAt });
     }
     if (msg["cmd"] === "stop") {
       this.stopAt = null;
       this.armStopTimer();
-      writeJson(this.runtimeFile, { running: false, stopAt: null });
+      writeJson(this.runtimeFile, { running: false, stopAt: null, live: false });
+      this.savedLive = false;
     }
     this.broadcast("state", this.publicState());
   }
@@ -357,6 +394,8 @@ export class Engine {
         const s = ev.data as Record<string, unknown>;
         delete s["settings"]; // Node owns settings
         this.state = s;
+        const status = s["status"] as Record<string, unknown> | undefined;
+        if (status && typeof status["liveEnabled"] === "boolean") this.saveLive(status["liveEnabled"]);
         this.broadcast("state", this.publicState());
         break;
       }
@@ -410,8 +449,10 @@ export class Engine {
     return this.effectiveSettings();
   }
 
+  /** Back to the default amounts and limits — how the user connects to Binance is kept. */
   resetSettings() {
-    this.settings = defaultSettings();
+    const { liveVenue, predictionAuth, predictionFunding, settingsVersion } = this.settings;
+    this.settings = { ...defaultSettings(), liveVenue, predictionAuth, predictionFunding, settingsVersion };
     return this.updateSettings({});
   }
 
@@ -467,7 +508,7 @@ export function removeEngine(userId: string, deleteData: boolean) {
   if (deleteData) rmSync(userDataDir(userId), { recursive: true, force: true });
 }
 
-/** On server boot, resume bots that were running (paper only — live trading always needs a fresh confirmation). */
+/** On server boot, resume bots that were running — with live betting back on if the user had it on. */
 export function resumeEngines(userIds: string[]) {
   for (const id of userIds) {
     const dir = userDataDir(id);
@@ -475,7 +516,12 @@ export function resumeEngines(userIds: string[]) {
     const e = getEngine(id);
     if (!e.wasRunning) continue;
     const stopAt = e.savedStopAt;
-    if (stopAt != null && stopAt <= Date.now()) e.command({ cmd: "stop" }); // run time ended while the server was down
-    else e.command({ cmd: "start" }, { stopAt });
+    if (stopAt != null && stopAt <= Date.now()) {
+      e.command({ cmd: "stop" }); // run time ended while the server was down
+      continue;
+    }
+    const live = e.wasLive;
+    e.command({ cmd: "start" }, { stopAt });
+    if (live) void e.restoreLive();
   }
 }

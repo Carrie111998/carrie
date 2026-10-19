@@ -2,6 +2,20 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.3.5 — 2026-10-19
+
+Full feature test (offline: simulated prices + a fake Binance Prediction API following the official docs) and fixes:
+
+- **Live betting stays on after a server restart or deploy** — it is restored automatically if you had it on (it still switches off when you turn it off, stop the bot, hit the daily loss limit, the run time ends or the account is put on hold).
+- **Real bets were settled against the wrong side**: a real bet was judged by the slot's opening call, not by the side it bought — wrong win/loss for bets placed mid-round, and bets in a round that opened with no direction never settled (and kept counting as open money). Now judged by the bet's own Up/Down; "no change" counts as a loss, as on Binance.
+- Live "open" count includes open real bets; open money ignores rounds that ended 30+ min ago.
+- Switching live on when today's loss limit is already reached is refused with a clear message; hitting it while betting shows a red notice.
+- Real bets in History show "slot won / slot lost" (were "slot settled"); community learning counts them as Prediction, not Spot.
+- Dashboard: the Open positions list no longer makes the page wider than a phone; real-bet rows tidied; the confirm dialog describes the real rules (all coins, 5-minute rounds, any time in the round).
+- Settings: in "My API key" mode the key form no longer shows the Spot Testnet switch or Spot-only advice (it saves a live key and asks for the "Prediction Trading" permission). "Restore defaults" keeps how you connect to Binance.
+- Activity log: share prices rounded; a missed bet shows the reason it waited for, not just "too late in the slot".
+- Non-admins opening Learning see "managed by the admin" instead of a developer 404 message.
+
 ## v3.3.4 — 2026-10-19
 
 - **Open positions shows real bets**: Binance Prediction bets (tagged LIVE, or TEST in test mode) appear in Open positions next to paper bets until their round settles, with the amount, payout, market, end time and what a win pays.

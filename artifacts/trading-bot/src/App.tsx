@@ -15,7 +15,7 @@ import NotFound from "@/pages/not-found";
 
 function Learning() {
   const { user } = useAuth();
-  return user?.isAdmin ? <LearningPage /> : <NotFound />;
+  return user?.isAdmin ? <LearningPage /> : <NotFound message="Learning settings are managed by the admin." />;
 }
 
 function Router() {
@@ -28,7 +28,7 @@ function Router() {
         <Route path="/history" component={History} />
         <Route path="/settings" component={Settings} />
         <Route path="/admin" component={Admin} />
-        <Route component={NotFound} />
+        <Route>{() => <NotFound />}</Route>
       </Switch>
     </Layout>
   );
