@@ -266,6 +266,8 @@ export class Engine {
     proc.stderr.on("data", (chunk: Buffer) => logger.warn({ userId: this.userId, stderr: chunk.toString().trim() }, "Engine stderr"));
     proc.on("exit", (code) => {
       this.proc = null;
+      // live betting the user switched on survives an engine crash (a full server restart still turns it off)
+      const wasLive = Boolean((this.state?.["status"] as Record<string, unknown> | undefined)?.["liveEnabled"]);
       if (this.stopped) return; // shut down on purpose (account deleted)
       logger.error({ userId: this.userId, code }, "Python engine exited — restarting in 3s");
       this.buffer = "";
@@ -275,6 +277,11 @@ export class Engine {
         this.restartTimer = null;
         this.start();
         if (this.wasRunning) this.send({ cmd: "start" });
+        if (wasLive) {
+          this.request({ cmd: "live", enabled: true }, 60_000)
+            .then((r) => logger.info({ userId: this.userId, r }, "Live betting restored after engine restart"))
+            .catch((err) => logger.warn({ userId: this.userId, err: String(err) }, "Could not restore live betting"));
+        }
       }, 3000);
     });
     this.send({ cmd: "init", dataDir: this.dataDir, settings: this.engineSettings(), credentials: this.credentials ?? {} });

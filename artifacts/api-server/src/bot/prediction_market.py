@@ -33,7 +33,10 @@ def run_baw(baw_dir: str, args: List[str], timeout: float = 60) -> Any:
     env = dict(os.environ, BINANCE_BAW_DIR=baw_dir)
     os.makedirs(baw_dir, exist_ok=True)
     try:
-        out = subprocess.run([baw_path(), *args, "--json"], capture_output=True, text=True, timeout=timeout, env=env)
+        # stdin=DEVNULL: the CLI must never touch the bot's own stdin (the command pipe from the server);
+        # sharing it let the CLI break the pipe and the bot engine shut down.
+        out = subprocess.run([baw_path(), *args, "--json"], capture_output=True, text=True, timeout=timeout, env=env,
+                             stdin=subprocess.DEVNULL)
     except FileNotFoundError:
         raise PredictionError("Binance Agentic Wallet CLI (baw) is not installed on the server") from None
     except subprocess.TimeoutExpired:

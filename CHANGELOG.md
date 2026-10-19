@@ -2,6 +2,12 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.2.1 — 2026-10-19
+
+- **Fixed bot engine crash during real betting / Find markets**: the Binance `baw` CLI shared the engine's command pipe and could break it, so the engine shut down (and live betting switched off). The CLI now runs without access to it, and the engine no longer treats a temporary pipe read error as shutdown.
+- If the engine ever restarts by itself, live betting that was switched on is switched back on (a full server restart still turns it off).
+- Coins without a Binance Prediction market at the chosen slot length are skipped for real bets with one warning, re-checked every 30 minutes, instead of failing every slot.
+
 ## v3.2.0 — 2026-10-19 (branch `release/v3.2.0`)
 
 - **Open to every device and browser**: the phone-only gate and the installed-app requirement are removed — the app (sign-up, login, everything) works in any browser on iPhone, Android, tablets, laptops and desktops. Server-side login protection stays: per-IP rate limit, single-use 10-minute email codes with attempt limits, failed-login lockout. `DEVICE_GATE=on` brings the old phone-only rule back. Phones can still install it to the Home Screen from the browser menu.

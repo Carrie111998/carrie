@@ -132,6 +132,7 @@ def merge_settings(base: dict, patch: dict) -> dict:
 
 class Bot:
     def __init__(self):
+        self.no_market_until: Dict[str, float] = {}  # coins without a Prediction market (re-checked every 30 min)
         self.settings = merge_settings(DEFAULT_SETTINGS, {})
         self.data_dir: Optional[str] = None
         self.data = self._empty_data()
@@ -661,6 +662,9 @@ class Bot:
 
     def try_live_bet(self, sym: str, slot: dict, sig: dict, blockers: List[str]):
         s = self.settings
+        if self.no_market_until.get(sym, 0) > time.time():
+            slot["liveWait"] = f"no Binance Prediction market for {sym}"
+            return
         if any(b["symbol"] == sym and b["slotStart"] == slot["slotStart"] and b["status"] in ("placed", "dry_run", "failed")
                for b in self.data["predictionBets"]):
             return
@@ -688,7 +692,10 @@ class Bot:
             markets, _ = self.pm.search(symbol_words(sym)[0].upper())
             m = match_slot_market(markets, symbol_words(sym), slot["slotEnd"])
             if not m:
-                raise PredictionError(f"no open {sym} market ends at this slot's close — check Settings → Find markets")
+                self.no_market_until[sym] = time.time() + 1800
+                log(f"No Binance Prediction market for {sym} at this slot length — real bets skip {sym}, checking again in 30 min", "warn")
+                slot["liveWait"] = f"no Binance Prediction market for {sym}"
+                return
             if not m["outcomes"] or not pick_outcome(m, sig["direction"]):
                 detail = self.pm.market_detail(m["marketTopicId"])
                 m = next((x for x in detail if x["marketTopicId"] == m["marketTopicId"]), m)
@@ -1212,7 +1219,14 @@ def main():
     q: "queue.Queue[dict]" = queue.Queue()
 
     def reader():
-        for line in sys.stdin:
+        while True:
+            try:
+                line = sys.stdin.readline()
+            except (BlockingIOError, InterruptedError):
+                time.sleep(0.1)  # pipe briefly non-blocking — not the end of input
+                continue
+            if line == "":
+                break  # real end of input: the server closed the pipe
             line = line.strip()
             if line:
                 try:
