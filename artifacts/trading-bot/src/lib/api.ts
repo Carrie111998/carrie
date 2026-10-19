@@ -194,7 +194,38 @@ export interface BotState {
   learning?: Learning;
   equity?: { t: number; v: number }[];
   recentTrades?: Trade[];
+  slots?: SlotsView;
 }
+
+export interface Slot {
+  slotStart: number;
+  slotEnd: number;
+  open: number;
+  direction: Side | "neutral";
+  confidence: number;
+  predictedAt: number;
+  priceAtPrediction: number;
+  close: number | null;
+  actual: "up" | "down" | "flat" | null;
+  hit: boolean | null;
+}
+
+export interface SlotsView {
+  bySymbol: Record<string, { slots: Slot[]; scored: number; hits: number; accuracy: number | null }>;
+  scored: number;
+  hits: number;
+  accuracy: number | null;
+  interval: string;
+}
+
+export interface Tick {
+  symbol: string;
+  price: number;
+  time: number;
+}
+
+/** Binance kline subset: [openTime, open, high, low, close] */
+export type Kline = [number, number, number, number, number];
 
 export interface CredentialInfo {
   hasCredentials: boolean;

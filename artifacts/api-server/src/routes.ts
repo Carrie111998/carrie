@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { getEngine, type Engine } from "./bot/engine";
+import { getKlines, KLINE_INTERVALS, SYMBOL_RE } from "./market";
 import {
   AuthError, bearer, emailEnabled, login, logout, publicUser, requireUser,
   startReset, startSignup, verifyReset, verifySignup, type User,
@@ -64,6 +65,17 @@ router.post("/auth/logout", (req, res) => {
   logout(bearer(req));
   res.json({ ok: true });
 });
+
+router.get("/market/klines", wrap(async (req, res) => {
+  const symbol = String(req.query["symbol"] ?? "").toUpperCase();
+  const interval = String(req.query["interval"] ?? "1s");
+  const limit = Math.min(1000, Math.max(1, Number(req.query["limit"]) || 300));
+  if (!SYMBOL_RE.test(symbol) || !(KLINE_INTERVALS as readonly string[]).includes(interval)) {
+    res.status(400).json({ error: "Invalid symbol or interval" });
+    return;
+  }
+  res.json(await getKlines(symbol, interval, limit));
+}));
 
 router.get("/state", (_req, res) => {
   res.json(engineOf(res).publicState());

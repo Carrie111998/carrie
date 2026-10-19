@@ -4,6 +4,7 @@ import { useBot } from "@/hooks/useBot";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Empty, Meter, SideBadge, VoteBar, fmtPrice, fmtTime } from "@/components/bits";
+import LiveMarket from "@/components/LiveMarket";
 
 function SignalCard({ s, labels, weights, minConfidence }: { s: Signal; labels: Record<string, string>; weights: Record<string, number>; minConfidence: number }) {
   const [open, setOpen] = useState(false);
@@ -80,6 +81,7 @@ export default function Signals() {
           combined by their learned weights into one prediction. Tap a card to see every vote.
         </p>
       </div>
+      <LiveMarket />
       {signals.length === 0 ? (
         <Empty>No signals yet — start the bot to scan the market.</Empty>
       ) : (

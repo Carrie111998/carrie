@@ -140,6 +140,7 @@ class Bot:
             "pending": [],
             "learning": learner.empty_learning(),
             "liveDaily": {},
+            "slots": {},
         }
 
     def _path(self):
@@ -247,6 +248,8 @@ class Bot:
             self.signals[sym] = sig
             if a["direction"] != 0 and a["confidence"] >= 50:
                 self.add_prediction(sig, interval_ms)
+            if sym in s["symbols"]:
+                self.update_slots(sym, c, sig, interval_ms)
             if sym in s["symbols"]:
                 candidates.append(sig)
 
@@ -398,6 +401,47 @@ class Bot:
     def live_loss_today(self) -> float:
         day = time.strftime("%Y-%m-%d", time.gmtime())
         return max(0.0, -self.data["liveDaily"].get(day, 0.0))
+
+    # ─── Slot predictions: "will this candle close above its open?" ─────────
+
+    def update_slots(self, sym: str, c: dict, sig: dict, interval_ms: int):
+        """Each candle is a slot. The first scan in a slot records the bot's call
+        (made from closed candles only); when the slot's candle closes it is scored."""
+        slots = self.data["slots"].setdefault(sym, [])
+        times = [int(t) for t in c["time"]]
+        index = {t: i for i, t in enumerate(times)}
+        cur = times[-1]
+        for sl in slots:
+            if sl["close"] is None and sl["slotStart"] < cur and sl["slotStart"] in index:
+                i = index[sl["slotStart"]]
+                sl["close"] = float(c["close"][i])
+                sl["actual"] = "up" if sl["close"] > sl["open"] else "down" if sl["close"] < sl["open"] else "flat"
+                sl["hit"] = None if sl["direction"] == "neutral" or sl["actual"] == "flat" else (
+                    (sl["direction"] == "long") == (sl["actual"] == "up"))
+        if not slots or slots[-1]["slotStart"] < cur:
+            slots.append({
+                "slotStart": cur, "slotEnd": cur + interval_ms, "open": float(c["open"][-1]),
+                "direction": sig["direction"], "confidence": sig["confidence"],
+                "predictedAt": now_ms(), "priceAtPrediction": sig["price"],
+                "close": None, "actual": None, "hit": None,
+            })
+        # forget unscorable slots (missed candles) and keep history small
+        self.data["slots"][sym] = [sl for sl in slots if sl["close"] is not None or sl["slotStart"] >= times[0]][-200:]
+
+    def slot_view(self) -> dict:
+        out, total, hits = {}, 0, 0
+        for sym, slots in self.data["slots"].items():
+            if sym not in self.settings["symbols"]:
+                continue
+            scored = [sl for sl in slots if sl["hit"] is not None]
+            h = sum(1 for sl in scored if sl["hit"])
+            total += len(scored)
+            hits += h
+            out[sym] = {"slots": slots[-40:], "scored": len(scored), "hits": h,
+                        "accuracy": round(100 * h / len(scored), 1) if scored else None}
+        return {"bySymbol": out, "scored": total, "hits": hits,
+                "accuracy": round(100 * hits / total, 1) if total else None,
+                "interval": self.settings["interval"]}
 
     # ─── Scan-level predictions (learn from every signal, not only trades) ──
 
@@ -614,6 +658,7 @@ class Bot:
             "learning": learning,
             "equity": self.data["equity"][-200:],
             "recentTrades": self.data["trades"][:50],
+            "slots": self.slot_view(),
             "settings": self.settings,
         })
 

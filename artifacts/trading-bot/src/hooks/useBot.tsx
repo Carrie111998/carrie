@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { api, wsUrl, type BotSettings, type BotState, type Trade } from "@/lib/api";
+import { api, wsUrl, type BotSettings, type BotState, type Tick, type Trade } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -9,6 +9,8 @@ interface BotContext {
   wsConnected: boolean;
   saveSettings: (patch: Partial<BotSettings>) => Promise<void>;
   run: (label: string, fn: () => Promise<unknown>) => Promise<boolean>;
+  /** Stream live Binance trades for one symbol; returns an unsubscribe function. */
+  watchTicks: (symbol: string, fn: (t: Tick) => void) => () => void;
 }
 
 const Ctx = createContext<BotContext | null>(null);
@@ -20,6 +22,26 @@ export function BotProvider({ children }: { children: ReactNode }) {
   const [wsConnected, setWsConnected] = useState(false);
   const { signOut } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);
+  const tickWatch = useRef<{ symbol: string; fn: (t: Tick) => void } | null>(null);
+
+  const sendWatch = useCallback(() => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN && tickWatch.current) {
+      ws.send(JSON.stringify({ type: "watch", symbol: tickWatch.current.symbol }));
+    }
+  }, []);
+
+  const watchTicks = useCallback(
+    (symbol: string, fn: (t: Tick) => void) => {
+      const entry = { symbol, fn };
+      tickWatch.current = entry;
+      sendWatch();
+      return () => {
+        if (tickWatch.current === entry) tickWatch.current = null;
+      };
+    },
+    [sendWatch],
+  );
 
   useEffect(() => {
     let closed = false;
@@ -33,7 +55,10 @@ export function BotProvider({ children }: { children: ReactNode }) {
       if (closed) return;
       const ws = new WebSocket(wsUrl());
       wsRef.current = ws;
-      ws.onopen = () => setWsConnected(true);
+      ws.onopen = () => {
+        setWsConnected(true);
+        sendWatch(); // re-subscribe to live ticks after a reconnect
+      };
       ws.onclose = (e) => {
         setWsConnected(false);
         if (closed) return;
@@ -47,6 +72,10 @@ export function BotProvider({ children }: { children: ReactNode }) {
         try {
           const msg = JSON.parse(e.data) as { type: string; data: unknown };
           if (msg.type === "state") setState(msg.data as BotState);
+          else if (msg.type === "tick") {
+            const t = msg.data as Tick;
+            if (tickWatch.current?.symbol === t.symbol) tickWatch.current.fn(t);
+          }
           else if (msg.type === "settings") setSettings(msg.data as BotSettings);
           else if (msg.type === "trade_closed") {
             const t = msg.data as Trade;
@@ -67,7 +96,7 @@ export function BotProvider({ children }: { children: ReactNode }) {
       if (timer) clearTimeout(timer);
       wsRef.current?.close();
     };
-  }, [toast, signOut]);
+  }, [toast, signOut, sendWatch]);
 
   const run = useCallback(
     async (label: string, fn: () => Promise<unknown>) => {
@@ -93,7 +122,7 @@ export function BotProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider
-      value={{ state, settings, wsConnected, saveSettings, run }}
+      value={{ state, settings, wsConnected, saveSettings, run, watchTicks }}
     >
       {children}
     </Ctx.Provider>
