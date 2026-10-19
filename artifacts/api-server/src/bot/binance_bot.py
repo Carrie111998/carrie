@@ -68,6 +68,9 @@ DEFAULT_SETTINGS = {
     "paperTradeMode": "fixed",      # "fixed" USDT per trade or "percent" of balance
     "paperTradeAmountUsdt": 1.0,    # minimum / default bet is 1 USD
     "paperTradeSizePct": 5.0,
+    # "prediction" = dummy Binance Prediction Up/Down bets per slot, "spot" = long/short positions with SL/TP
+    "paperMode": "prediction",
+    "paperPredictionPrice": 0.5,    # assumed share price of the side we buy (0.50 = fresh 50/50 market)
     "allowShort": True,
     "slAtrMult": 1.5,
     "tpAtrMult": 2.0,
@@ -136,6 +139,7 @@ class Bot:
         self.sim = SimulatedMarket() if SIMULATE else None
         self.market = self.sim if SIMULATE else MarketData()
         self.study_cache: Optional[dict] = None
+        self._new_slots: List[tuple] = []
         self.pm: Optional[PredictionClient] = None
         self.pm_status: Optional[str] = None
         self.pm_balance_at = 0.0
@@ -202,6 +206,15 @@ class Bot:
     def weights(self) -> Dict[str, float]:
         return {k: float(v.get("weight", 1.0)) for k, v in self.settings["indicators"].items()}
 
+    @staticmethod
+    def unrealized(p: dict, price: Optional[float] = None) -> float:
+        price = p["lastPrice"] if price is None else price
+        if p.get("kind") == "prediction":
+            winning = price > p["entryPrice"] if p["side"] == "long" else price < p["entryPrice"]
+            return p["qty"] - p["quote"] if winning else -p["quote"]
+        side = 1 if p["side"] == "long" else -1
+        return p["qty"] * (price - p["entryPrice"]) * side
+
     def positions(self, mode: Optional[str] = None):
         return [p for p in self.data["positions"] if mode is None or p["mode"] == mode]
 
@@ -233,6 +246,7 @@ class Bot:
         symbols = list(dict.fromkeys(s["symbols"] + [p["symbol"] for p in self.data["positions"]]))
         candidates = []
         prices: Dict[str, float] = {}
+        self._new_slots: List[tuple] = []
 
         for sym in symbols:
             try:
@@ -271,6 +285,8 @@ class Bot:
 
         self.phase = "trading"
         self.open_new_positions(candidates)
+        if s.get("paperMode") == "prediction":
+            self.open_paper_predictions(self._new_slots)
         self.prediction_housekeeping()
         self.maybe_autotune()
         self.snapshot_equity(prices)
@@ -298,11 +314,84 @@ class Bot:
             r.append("position already open")
         return r
 
+    # ─── Paper "Binance Prediction" bets (dummy Up/Down bet on every slot) ──
+
+    def prediction_blockers(self, sig: dict) -> List[str]:
+        s = self.settings
+        r = []
+        if sig["direction"] == "neutral":
+            r.append("no clear direction")
+        if sig["confidence"] < s["minConfidence"]:
+            r.append(f"confidence {sig['confidence']:.0f}% < {s['minConfidence']}%")
+        if sig["symbol"] in s["blockedSymbols"]:
+            r.append("symbol blocked by auto-tune")
+        if time.gmtime().tm_hour in s["blockedHours"]:
+            r.append("hour blocked by auto-tune")
+        if sig["adx"] < s["minAdx"]:
+            r.append(f"ADX {sig['adx']:.0f} < {s['minAdx']}")
+        if sig["direction"] == "short" and not s["allowShort"]:
+            r.append("Down bets disabled by auto-tune")
+        return r
+
+    def open_paper_predictions(self, new_slots: List[tuple]):
+        """Bet on the slots that opened this cycle: best confidence first, up to maxOpenPositions per slot."""
+        s = self.settings
+        placed = 0
+        for sym, slot, sig in sorted(new_slots, key=lambda x: -x[2]["confidence"]):
+            if placed >= s["maxOpenPositions"] or self.prediction_blockers(sig):
+                continue
+            if any(p["symbol"] == sym and p.get("kind") == "prediction" for p in self.positions("paper")):
+                continue
+            bal = self.data["paper"]["balance"]
+            amount = round(bal * s["paperTradeSizePct"] / 100, 2) if s.get("paperTradeMode") == "percent" else float(s.get("paperTradeAmountUsdt", 1.0))
+            amount = max(1.0, amount)
+            if amount > bal:
+                continue
+            price = min(0.95, max(0.05, float(s.get("paperPredictionPrice", 0.5))))
+            self.data["paper"]["balance"] = bal - amount
+            self.data["positions"].append({
+                "id": uuid.uuid4().hex[:12], "mode": "paper", "kind": "prediction", "symbol": sym, "side": sig["direction"],
+                "qty": amount / price, "entryPrice": slot["open"], "quote": amount, "entryFee": amount * s["feePct"] / 100,
+                "sl": 0.0, "tp": 0.0, "openTime": now_ms(), "openCandle": slot["slotStart"], "checkedFrom": slot["slotStart"],
+                "slotStart": slot["slotStart"], "slotEnd": slot["slotEnd"], "heldCandles": 0, "lastPrice": sig["price"],
+                "confidence": sig["confidence"], "score": sig["score"], "votes": sig["votes"], "regime": sig["regime"],
+                "adx": sig["adx"], "orderId": None, "sellFailures": 0, "sharePrice": price,
+            })
+            placed += 1
+            log(f"PAPER bet {'UP' if sig['direction'] == 'long' else 'DOWN'} {sym} {amount:g} USDT @ {price:.2f} "
+                f"(beat {slot['open']:.6g}, conf {sig['confidence']:.0f}%)")
+
+    def settle_paper_prediction(self, sym: str, slot: dict):
+        pos = next((p for p in self.positions("paper") if p.get("kind") == "prediction" and p["symbol"] == sym
+                    and p["slotStart"] == slot["slotStart"]), None)
+        if not pos:
+            return
+        won = slot["actual"] == ("up" if pos["side"] == "long" else "down")  # flat ("no change") loses both sides
+        payout = pos["qty"] if won else 0.0
+        pnl = payout - pos["quote"] - pos["entryFee"]
+        self.data["paper"]["balance"] += payout - pos["entryFee"]
+        self.data["positions"] = [p for p in self.data["positions"] if p["id"] != pos["id"]]
+        trade = {k: pos[k] for k in ("id", "mode", "symbol", "side", "qty", "entryPrice", "quote", "openTime",
+                                     "confidence", "score", "votes", "regime", "adx", "orderId")}
+        trade.update({
+            "kind": "prediction", "heldCandles": 1, "exitPrice": slot["close"], "closeTime": now_ms(),
+            "pnl": round(pnl, 4), "fees": round(pos["entryFee"], 4), "pnlPct": round(100 * pnl / pos["quote"], 3),
+            "result": "win" if won else "loss", "exitReason": "slot_won" if won else "slot_lost",
+        })
+        self.data["trades"].insert(0, trade)
+        del self.data["trades"][MAX_TRADES:]
+        actual = 1 if slot["actual"] == "up" else -1 if slot["actual"] == "down" else 0
+        learner.record_outcome(self.data["learning"], pos["votes"], actual)
+        self.study_cache = None
+        log(f"PAPER bet {sym} {'won' if won else 'lost'} {pnl:+.4f} USDT ({slot['open']:.6g} → {slot['close']:.6g})", "trade")
+        emit("trade_closed", trade)
+
     def open_new_positions(self, candidates: List[dict]):
         s = self.settings
+        prediction_paper = s.get("paperMode") == "prediction"
         for sig in sorted(candidates, key=lambda x: -x["confidence"]):
-            sig["reasons"] = self.entry_blockers(sig, "paper")
-            if not sig["reasons"] and len(self.positions("paper")) < s["maxOpenPositions"]:
+            sig["reasons"] = self.prediction_blockers(sig) if prediction_paper else self.entry_blockers(sig, "paper")
+            if not prediction_paper and not sig["reasons"] and len(self.positions("paper")) < s["maxOpenPositions"]:
                 self.open_paper(sig)
             if self.live_enabled and self.trader and self.settings.get("liveVenue") == "spot":
                 if not self.entry_blockers(sig, "live") and len(self.positions("live")) < s["liveMaxOpenPositions"]:
@@ -353,6 +442,9 @@ class Bot:
 
     def manage_positions(self, sym: str, c: dict, interval_ms: int):
         for pos in [p for p in self.data["positions"] if p["symbol"] == sym]:
+            if pos.get("kind") == "prediction":
+                pos["lastPrice"] = float(c["close"][-1])  # settled when its slot closes (update_slots)
+                continue
             side = 1 if pos["side"] == "long" else -1
             times = c["time"]
             idx = [i for i in range(len(times)) if times[i] >= pos["checkedFrom"]]
@@ -436,6 +528,7 @@ class Bot:
                 sl["hit"] = None if sl["direction"] == "neutral" or sl["actual"] == "flat" else (
                     (sl["direction"] == "long") == (sl["actual"] == "up"))
                 self.settle_prediction_bet(sym, sl)
+                self.settle_paper_prediction(sym, sl)
         if not slots or slots[-1]["slotStart"] < cur:
             slot = {
                 "slotStart": cur, "slotEnd": cur + interval_ms, "open": float(c["open"][-1]),
@@ -444,6 +537,7 @@ class Bot:
                 "close": None, "actual": None, "hit": None,
             }
             slots.append(slot)
+            self._new_slots.append((sym, slot, sig))
             if self.live_enabled and self.settings.get("liveVenue") == "prediction" and sym == self.settings["predictionSymbol"]:
                 self.place_prediction_bet(sym, slot, sig)
         # forget unscorable slots (missed candles) and keep history small
@@ -604,7 +698,8 @@ class Bot:
         n_paper = sum(1 for t in self.data["trades"] if t["mode"] == "paper")
         if not force and n_paper - self.data["learning"]["lastTuneTradeCount"] < s["autoTuneEvery"]:
             return
-        patch, changes = learner.autotune(s, self.data["learning"], self.data["trades"], now_ms())
+        tune_s = dict(s, tuneRisk=False) if s.get("paperMode") == "prediction" else s  # no SL/TP on slot bets
+        patch, changes = learner.autotune(tune_s, self.data["learning"], self.data["trades"], now_ms())
         if patch:
             self.settings = merge_settings(self.settings, patch)
             emit("settings_tuned", patch)
@@ -773,18 +868,15 @@ class Bot:
         paper = self.stats("paper")
         live = self.stats("live")
         learning = self.learning_view()
-        unreal = 0.0
-        for p in self.positions("paper"):
-            side = 1 if p["side"] == "long" else -1
-            unreal += p["qty"] * (p["lastPrice"] - p["entryPrice"]) * side
+        unreal = sum(self.unrealized(p) for p in self.positions("paper"))
         equity = self.data["paper"]["balance"] + sum(p["quote"] for p in self.positions("paper")) + unreal
         start = self.data["paper"]["startBalance"]
         positions = []
         for p in self.data["positions"]:
-            side = 1 if p["side"] == "long" else -1
-            u = p["qty"] * (p["lastPrice"] - p["entryPrice"]) * side
+            u = self.unrealized(p)
             positions.append({k: p[k] for k in ("id", "mode", "symbol", "side", "qty", "entryPrice", "quote", "sl", "tp",
                                                 "openTime", "heldCandles", "lastPrice", "confidence")}
+                             | {"kind": p.get("kind", "position"), "slotEnd": p.get("slotEnd")}
                              | {"unrealizedPnl": round(u, 4), "unrealizedPct": round(100 * u / p["quote"], 3) if p["quote"] else 0})
         emit("state", {
             "status": {
@@ -814,10 +906,7 @@ class Bot:
         })
 
     def snapshot_equity(self, prices: Dict[str, float]):
-        unreal = 0.0
-        for p in self.positions("paper"):
-            side = 1 if p["side"] == "long" else -1
-            unreal += p["qty"] * (prices.get(p["symbol"], p["lastPrice"]) - p["entryPrice"]) * side
+        unreal = sum(self.unrealized(p, prices.get(p["symbol"])) for p in self.positions("paper"))
         eq = self.data["paper"]["balance"] + sum(p["quote"] for p in self.positions("paper")) + unreal
         e = self.data["equity"]
         e.append({"t": now_ms(), "v": round(eq, 2)})
@@ -913,7 +1002,7 @@ class Bot:
             return
         elif cmd == "close_position":
             pos = next((p for p in self.data["positions"] if p["id"] == msg.get("id")), None)
-            if pos:
+            if pos and pos.get("kind") != "prediction":  # slot bets always run until their slot closes
                 self.close_position(pos, pos["lastPrice"], "manual")
                 self.save()
         elif cmd == "calibrate":

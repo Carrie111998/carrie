@@ -73,11 +73,19 @@ function PositionRow({ p }: { p: Position }) {
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-sm font-semibold">{p.symbol}</span>
-          <SideBadge side={p.side} />
+          {p.kind === "prediction" ? (
+            <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${p.side === "long" ? "border-emerald-500/30 text-emerald-300" : "border-red-500/30 text-red-300"}`}>
+              {p.side === "long" ? "UP" : "DOWN"}
+            </span>
+          ) : (
+            <SideBadge side={p.side} />
+          )}
           <ModeBadge mode={p.mode} />
         </div>
         <div className="text-xs text-muted-foreground mt-0.5 font-mono">
-          bet {fmtUsd(p.quote)} · {fmtPrice(p.entryPrice)} → {fmtPrice(p.lastPrice)} · SL {fmtPrice(p.sl)} · TP {fmtPrice(p.tp)}
+          {p.kind === "prediction"
+            ? `${p.side === "long" ? "UP" : "DOWN"} bet ${fmtUsd(p.quote)} · beat ${fmtPrice(p.entryPrice)} → ${fmtPrice(p.lastPrice)}${p.slotEnd ? ` · ends ${fmtTime(p.slotEnd)}` : ""}`
+            : `bet ${fmtUsd(p.quote)} · ${fmtPrice(p.entryPrice)} → ${fmtPrice(p.lastPrice)} · SL ${fmtPrice(p.sl)} · TP ${fmtPrice(p.tp)}`}
         </div>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -85,7 +93,7 @@ function PositionRow({ p }: { p: Position }) {
           <div className={`text-sm font-mono font-semibold ${pnlClass(p.unrealizedPnl)}`}>{fmtSigned(p.unrealizedPnl)}</div>
           <div className={`text-xs font-mono ${pnlClass(p.unrealizedPct)}`}>{fmtSigned(p.unrealizedPct, "%")}</div>
         </div>
-        <Button
+        {p.kind !== "prediction" && <Button
           size="icon"
           variant="ghost"
           className="h-8 w-8"
@@ -93,7 +101,7 @@ function PositionRow({ p }: { p: Position }) {
           onClick={() => run("Could not close position", () => api(`/positions/${p.id}/close`, { method: "POST" }))}
         >
           <X className="h-4 w-4" />
-        </Button>
+        </Button>}
       </div>
     </div>
   );

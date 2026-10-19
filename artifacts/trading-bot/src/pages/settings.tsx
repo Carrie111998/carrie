@@ -346,6 +346,22 @@ export default function Settings() {
       </Panel>
 
       <Panel title="Paper trading & risk">
+        <div className="mb-4 grid gap-2 sm:grid-cols-2">
+          {([
+            ["prediction", "Dummy Binance Prediction", "A pretend Up/Down bet on every slot, paid like a prediction market. Best for tuning prediction betting."],
+            ["spot", "Dummy Spot trading", "Pretend long/short positions closed by stop-loss, take-profit or time limit."],
+          ] as const).map(([v, title, hint]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => set("paperMode", v)}
+              className={`rounded-md border p-3 text-left ${draft.paperMode === v ? "border-primary bg-primary/10" : "border-border"}`}
+            >
+              <div className="text-sm font-semibold">{title}</div>
+              <div className="text-[11px] text-muted-foreground">{hint}</div>
+            </button>
+          ))}
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Paper start balance (USDT)" hint="Applied after Reset paper account."><Num value={n("paperStartBalance")} onChange={(v) => set("paperStartBalance", v)} /></Field>
           <Field label="Bet amount type">
@@ -365,14 +381,31 @@ export default function Settings() {
           ) : (
             <Field label="Trade size (% of balance)" hint="Never less than 1 USD per trade."><Num value={n("paperTradeSizePct")} onChange={(v) => set("paperTradeSizePct", v)} step={0.5} /></Field>
           )}
-          <Field label="Max open paper positions"><Num value={n("maxOpenPositions")} onChange={(v) => set("maxOpenPositions", v)} /></Field>
-          <Field label="Stop-loss (× ATR)"><Num value={n("slAtrMult")} onChange={(v) => set("slAtrMult", v)} step={0.1} /></Field>
-          <Field label="Take-profit (× ATR)"><Num value={n("tpAtrMult")} onChange={(v) => set("tpAtrMult", v)} step={0.1} /></Field>
-          <Field label="Max hold (candles)"><Num value={n("maxHoldCandles")} onChange={(v) => set("maxHoldCandles", v)} /></Field>
-          <Field label="Fee per side %"><Num value={n("feePct")} onChange={(v) => set("feePct", v)} step={0.01} /></Field>
-          <div className="sm:col-span-2 flex items-end">
-            <Toggle label="Allow short trades (paper only)" hint="Binance Spot live trading is always long-only." checked={draft.allowShort} onChange={(v) => set("allowShort", v)} />
-          </div>
+          {draft.paperMode === "prediction" ? (
+            <>
+              <Field label="Max bets per slot" hint="Best-confidence pairs first.">
+                <Num value={n("maxOpenPositions")} onChange={(v) => set("maxOpenPositions", v)} />
+              </Field>
+              <Field label="Assumed share price" hint="0.50 = 50/50 market: a $1 win pays $2 back (+$1).">
+                <Num value={n("paperPredictionPrice")} onChange={(v) => set("paperPredictionPrice", v)} step={0.01} min={0.05} max={0.95} />
+              </Field>
+              <Field label="Fee %" hint="Charged on each bet."><Num value={n("feePct")} onChange={(v) => set("feePct", v)} step={0.01} /></Field>
+              <div className="sm:col-span-2 flex items-end">
+                <Toggle label="Allow Down bets" hint="Auto-tune may switch these off if they lose too often." checked={draft.allowShort} onChange={(v) => set("allowShort", v)} />
+              </div>
+            </>
+          ) : (
+            <>
+              <Field label="Max open paper positions"><Num value={n("maxOpenPositions")} onChange={(v) => set("maxOpenPositions", v)} /></Field>
+              <Field label="Stop-loss (× ATR)"><Num value={n("slAtrMult")} onChange={(v) => set("slAtrMult", v)} step={0.1} /></Field>
+              <Field label="Take-profit (× ATR)"><Num value={n("tpAtrMult")} onChange={(v) => set("tpAtrMult", v)} step={0.1} /></Field>
+              <Field label="Max hold (candles)"><Num value={n("maxHoldCandles")} onChange={(v) => set("maxHoldCandles", v)} /></Field>
+              <Field label="Fee per side %"><Num value={n("feePct")} onChange={(v) => set("feePct", v)} step={0.01} /></Field>
+              <div className="sm:col-span-2 flex items-end">
+                <Toggle label="Allow short trades (paper only)" hint="Binance Spot live trading is always long-only." checked={draft.allowShort} onChange={(v) => set("allowShort", v)} />
+              </div>
+            </>
+          )}
         </div>
       </Panel>
 

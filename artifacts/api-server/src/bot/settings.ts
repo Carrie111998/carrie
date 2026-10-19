@@ -24,6 +24,8 @@ export interface BotSettings {
   paperTradeMode: "fixed" | "percent";
   paperTradeAmountUsdt: number;
   paperTradeSizePct: number;
+  paperMode: "prediction" | "spot";
+  paperPredictionPrice: number;
   allowShort: boolean;
   slAtrMult: number;
   tpAtrMult: number;
@@ -64,6 +66,8 @@ export function defaultSettings(): BotSettings {
     paperTradeMode: "fixed",
     paperTradeAmountUsdt: 1,
     paperTradeSizePct: 5,
+    paperMode: "prediction",
+    paperPredictionPrice: 0.5,
     allowShort: true,
     slAtrMult: 1.5,
     tpAtrMult: 2.0,
@@ -107,6 +111,7 @@ const BOUNDS: Record<string, [number, number]> = {
   paperStartBalance: [100, 10_000_000],
   paperTradeAmountUsdt: [1, 1_000_000],
   paperTradeSizePct: [0.5, 100],
+  paperPredictionPrice: [0.05, 0.95],
   slAtrMult: [0.3, 10],
   tpAtrMult: [0.3, 20],
   maxHoldCandles: [1, 500],
@@ -149,6 +154,7 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
   }
   if (p.paperTradeMode === "fixed" || p.paperTradeMode === "percent") next.paperTradeMode = p.paperTradeMode;
   if (p.liveVenue === "prediction" || p.liveVenue === "spot") next.liveVenue = p.liveVenue;
+  if (p.paperMode === "prediction" || p.paperMode === "spot") next.paperMode = p.paperMode;
   if (typeof p.predictionSymbol === "string" && SYMBOL_RE.test(p.predictionSymbol.trim().toUpperCase())) {
     next.predictionSymbol = p.predictionSymbol.trim().toUpperCase();
   }

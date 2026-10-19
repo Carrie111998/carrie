@@ -147,6 +147,7 @@ export default function LiveMarket() {
   const currentCall = slots.find((s) => s.slotStart === start);
   const past = [...slots].filter((s) => s.close != null).reverse();
   const lean = state?.signals?.find((s) => s.symbol === symbol);
+  const paperBet = state?.positions?.find((p) => p.kind === "prediction" && p.symbol === symbol && p.slotEnd === start + slotMs);
   const betFor = (t: number) => state?.prediction?.bets.find((b) => b.symbol === symbol && b.slotStart === t);
   const upcoming = [1, 2, 3, 4].map((i) => start + i * slotMs);
   const selectedPast = typeof selected === "number" && selected < start ? slots.find((s) => s.slotStart === selected) : undefined;
@@ -342,6 +343,17 @@ export default function LiveMarket() {
             </div>
             <Meter value={currentCall.confidence} className="max-w-xs" />
             <BetLine bet={betFor(start)} />
+            {paperBet && (
+              <div className="flex flex-wrap items-center gap-x-3 text-xs">
+                <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-semibold text-sky-300">PAPER BET</span>
+                <span className="font-mono">
+                  {usd(paperBet.quote)} on {paperBet.side === "long" ? "UP" : "DOWN"} → {paperBet.qty.toFixed(2)} shares · now{" "}
+                  <span className={paperBet.unrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}>
+                    {paperBet.unrealizedPnl >= 0 ? "+" : ""}{paperBet.unrealizedPnl.toFixed(2)}
+                  </span>
+                </span>
+              </div>
+            )}
             <div className="text-[11px] text-muted-foreground">Called at {hhmmss(currentCall.predictedAt)} using closed candles only.</div>
           </div>
         ) : (

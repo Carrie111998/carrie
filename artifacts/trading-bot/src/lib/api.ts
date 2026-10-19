@@ -19,6 +19,8 @@ export interface BotSettings {
   paperTradeMode: "fixed" | "percent";
   paperTradeAmountUsdt: number;
   paperTradeSizePct: number;
+  paperMode: "prediction" | "spot";
+  paperPredictionPrice: number;
   allowShort: boolean;
   slAtrMult: number;
   tpAtrMult: number;
@@ -78,6 +80,8 @@ export interface Position {
   lastPrice: number;
   confidence: number;
   unrealizedPnl: number;
+  kind: "position" | "prediction";
+  slotEnd: number | null;
   unrealizedPct: number;
 }
 
