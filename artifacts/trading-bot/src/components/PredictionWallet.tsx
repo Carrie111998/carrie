@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, LogOut, RefreshCw, Search, Smartphone, Wallet } from "lucide-react";
+import { ExternalLink, Gift, LogOut, RefreshCw, Search, Smartphone, Wallet } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import QRCode from "qrcode";
 import { useBot } from "@/hooks/useBot";
 import { api, type MarketSearch } from "@/lib/api";
@@ -28,6 +29,7 @@ const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digi
 /** Connect / show the Binance Agentic Wallet used for Prediction Market bets. */
 export function PredictionWallet() {
   const { run, state } = useBot();
+  const { toast } = useToast();
   const [info, setInfo] = useState<WalletInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const acct = state?.status?.liveAccount;
@@ -125,6 +127,19 @@ export function PredictionWallet() {
               }}
             >
               <RefreshCw className="h-4 w-4 mr-1.5" /> Refresh balance
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                await run("Claim failed", async () => {
+                  const r = await api<{ redeemed: number }>("/prediction/redeem", { method: "POST" });
+                  toast({ title: r.redeemed ? `Claimed ${r.redeemed} winning position(s)` : "Nothing to claim right now" });
+                });
+                setBusy(false);
+              }}
+            >
+              <Gift className="h-4 w-4 mr-1.5" /> Claim winnings now
             </Button>
             <Button
               variant="ghost"

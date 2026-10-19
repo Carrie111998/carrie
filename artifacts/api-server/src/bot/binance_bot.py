@@ -1177,6 +1177,20 @@ class Bot:
             except PredictionError as e:
                 emit("response", {"ok": False, "error": str(e)}, reqId=req)
             return
+        elif cmd == "prediction_redeem":
+            try:
+                if not self.pm:
+                    raise PredictionError("connect your Binance wallet first")
+                n = self.pm.redeem_all()
+                self.pm_redeem_at = time.time()
+                if n:
+                    log(f"Redeemed {n} winning prediction position(s)", "trade")
+                self.refresh_prediction_wallet()
+                emit("response", {"ok": True, "redeemed": n}, reqId=req)
+            except PredictionError as e:
+                emit("response", {"ok": False, "error": str(e)}, reqId=req)
+            self.emit_state()
+            return
         elif cmd == "prediction_refresh":
             emit("response", self.refresh_prediction_wallet(), reqId=req)
             self.emit_state()

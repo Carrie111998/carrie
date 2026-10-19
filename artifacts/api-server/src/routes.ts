@@ -236,6 +236,15 @@ router.post("/prediction/refresh", wrap(async (_req, res) => {
   res.json(await engineOf(res).request({ cmd: "prediction_refresh" }, 60_000));
 }));
 
+router.post("/prediction/redeem", wrap(async (_req, res) => {
+  const r = (await engineOf(res).request({ cmd: "prediction_redeem" }, 120_000)) as { ok: boolean; error?: string; redeemed?: number };
+  if (!r.ok) {
+    res.status(400).json({ error: r.error ?? "Claim failed" });
+    return;
+  }
+  res.json(r);
+}));
+
 router.get("/prediction/markets", wrap(async (req, res) => {
   const query = String(req.query["query"] ?? "").slice(0, 200);
   res.json(await engineOf(res).request({ cmd: "prediction_markets", query }, 60_000));

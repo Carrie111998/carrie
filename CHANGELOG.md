@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.2.5 — 2026-10-19
+
+- **Claim winnings now** button (Settings → Connect Binance → Prediction Market): redeems every winning position into the Agentic Wallet right away, besides the automatic claim every 5 minutes.
+
 ## v3.2.4 — 2026-10-19
 
 - **Fixed "Redeem failed: SERVICE_ERROR: chainId not supported"**: auto-claim now passes `--binanceChainId` (56 BSC, or the position's own chain) to `baw prediction trade redeem`, grouping winning positions by chain.
