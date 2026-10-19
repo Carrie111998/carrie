@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.0.3 — 2026-10-19
+
+- The slow EMA-100 trend no longer votes directly on each slot's Up/Down decision or confidence. In a long uptrend it sat at about +0.97 on every coin, so Down predictions were rarely confident enough to bet. It still feeds the AI model.
+
 ## v3.0.2 — 2026-10-19
 
 - Diagnostics in the server log (Hostinger → Docker logs): each slot summary lists every coin's prediction (Up/Down, confidence, score, AI and trend votes), startup shows each user's Up/Down trade counts, and community learning logs pooled Up/Down results.

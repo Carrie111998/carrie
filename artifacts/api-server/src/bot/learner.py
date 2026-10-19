@@ -116,8 +116,15 @@ def ai_vote(learning: dict, votes: Dict[str, float]) -> Optional[float]:
 
 # ─── Signal combination ──────────────────────────────────────────────────────
 
+# Slow "market regime" votes: the 100-candle trend sits near +1 or -1 for hours, so letting it vote on
+# every short slot made the bot agree with the long-term trend only (e.g. Up bets only, Down bets
+# never confident enough). It still feeds the AI model, which learns how much it really matters.
+CONTEXT_KEYS = {"trend"}
+
+
 def combine(votes: Dict[str, float], weights: Dict[str, float]) -> Tuple[int, float, float]:
     """Returns (direction, confidence 0-100, weighted score -1..1)."""
+    votes = {k: v for k, v in votes.items() if k not in CONTEXT_KEYS}
     tw = sum(weights.get(k, 1.0) for k in votes) or 1.0
     score = sum(weights.get(k, 1.0) * v for k, v in votes.items()) / tw
     mag = sum(weights.get(k, 1.0) * abs(v) for k, v in votes.items())
