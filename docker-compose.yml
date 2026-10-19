@@ -21,7 +21,7 @@ services:
       - BOT_DATA_DIR=/app/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.trader.rule=Host(`srv1854512.hstgr.cloud`) || Host(`trader.kepexo.com`)"
+      - "traefik.http.routers.trader.rule=Host(`trader.srv1854512.hstgr.cloud`)"
       - "traefik.http.routers.trader.entrypoints=websecure"
       - "traefik.http.routers.trader.tls.certresolver=letsencrypt"
       - "traefik.http.services.trader.loadbalancer.server.port=8888"

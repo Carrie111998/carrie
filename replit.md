@@ -26,7 +26,7 @@ cp .env.example .env      # add your SMTP email settings (for sign-up codes)
 docker compose up -d --build
 ```
 
-The app runs on port **8888** (`docker-compose.yml` also has Traefik labels for `trader.kepexo.com`; change the `Host(...)` rule to use your own domain). All users, trades, learning data and API keys live in the `trader-data` volume, so they survive rebuilds and restarts. Don't delete that volume. If email isn't configured, read sign-up codes with `docker logs binance-predict-bot | grep code`.
+The app runs on port **8888** (`docker-compose.yml` also has Traefik labels for `trader.srv1854512.hstgr.cloud`; change the `Host(...)` rule to use your own domain). All users, trades, learning data and API keys live in the `trader-data` volume, so they survive rebuilds and restarts. Don't delete that volume. If email isn't configured, read sign-up codes with `docker logs binance-predict-bot | grep code`.
 
 
 | Variable | Purpose |
