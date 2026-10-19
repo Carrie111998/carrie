@@ -1,5 +1,5 @@
 # Builds the bot image on every push to main and publishes it to GitHub Container Registry.
-# The Hostinger VPS pulls ghcr.io/carrie111998/carrie:latest (see docker-compose.yml).
+# The Hostinger VPS pulls ghcr.io/carrie111998/binance-predict-bot:latest (see docker-compose.yml).
 name: Docker image
 
 on:
@@ -27,8 +27,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/carrie111998/carrie:latest
-            ghcr.io/carrie111998/carrie:${{ github.sha }}
+            ghcr.io/carrie111998/binance-predict-bot:latest
+            ghcr.io/carrie111998/binance-predict-bot:${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
