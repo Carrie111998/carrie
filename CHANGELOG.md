@@ -2,6 +2,10 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.0.2 — 2026-10-19
+
+- Diagnostics in the server log (Hostinger → Docker logs): each slot summary lists every coin's prediction (Up/Down, confidence, score, AI and trend votes), startup shows each user's Up/Down trade counts, and community learning logs pooled Up/Down results.
+
 ## v3.0.1 — 2026-10-19
 
 - **Fixed "all bets are Up"**: auto-tune could switch *Allow Down bets* off after a run of losing Down bets, and nothing could ever switch it back on (no new Down results arrive while it's off), so the bot only bet Up. Auto-tune no longer switches Down bets off, and the update turns them back on once in the shared brain (logged on the Learning page).

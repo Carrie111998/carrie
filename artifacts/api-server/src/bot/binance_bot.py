@@ -183,7 +183,11 @@ class Bot:
             for k, v in learner.empty_learning().items():
                 base["learning"].setdefault(k, v)
             self.data = base
-            log(f"Loaded {len(self.data['trades'])} trades and learning data from disk")
+            tr = self.data["trades"]
+            ups = sum(1 for t in tr if t.get("side") == "long")
+            downs = sum(1 for t in tr if t.get("side") == "short")
+            log(f"Loaded {len(tr)} trades and learning data from disk (Up {ups}, Down {downs}; "
+                f"AI model {self.data['learning']['model'].get('samples', 0)} samples)")
         except Exception as e:
             log(f"Could not load saved data ({e}); starting fresh", "warn")
 
@@ -379,7 +383,11 @@ class Bot:
         if new_slots:
             why = ", ".join(f"{k} ×{v}" for k, v in sorted(skipped.items(), key=lambda x: -x[1]))
             log(f"Slot {time.strftime('%H:%M', time.gmtime(new_slots[0][1]['slotStart'] / 1000))} UTC: {placed} paper bet(s) placed"
-                + (f", {sum(skipped.values())} skipped ({why})" if skipped else ""), "slot")
+                + (f", {sum(skipped.values())} skipped ({why})" if skipped else "")
+                + " · predictions: " + ", ".join(
+                    f"{sym.replace('USDT', '')} {'UP' if sig['direction'] == 'long' else 'DOWN' if sig['direction'] == 'short' else '-'}"
+                    f" {sig['confidence']:.0f}% (score {sig['score']:+.2f}, ai {sig['votes'].get('ai', 0):+.2f}, trend {sig['votes'].get('trend', 0):+.2f})"
+                    for sym, _slot, sig in new_slots), "slot")
 
     def settle_paper_prediction(self, sym: str, slot: dict):
         pos = next((p for p in self.positions("paper") if p.get("kind") == "prediction" and p["symbol"] == sym

@@ -114,7 +114,9 @@ def main(data_dir: str):
     with open(tmp, "w") as f:
         json.dump(out, f, default=float)
     os.replace(tmp, os.path.join(gdir, "collective.json"))
-    print(json.dumps({"users": users, "trades": len(trades), "recommended": list(recommended)}))
+    print(json.dumps({"users": users, "trades": len(trades), "recommended": list(recommended),
+                      "up": out["summary"]["byDirection"]["long"], "down": out["summary"]["byDirection"]["short"],
+                      "minConfidence": recommended.get("minConfidence")}))
 
 
 if __name__ == "__main__":
