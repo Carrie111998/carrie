@@ -2,6 +2,13 @@
 
 All versions of the bot. Older versions are kept as zip files in [`archive/`](archive/).
 
+## v3.3.0 — 2026-10-19
+
+- **Prediction bets with your Binance API key**: Settings → Connect Binance → Prediction Market → "Connect Prediction with: My API key". Uses Binance's official Prediction Trading REST API (`/sapi/v1/w3w/wallet/prediction/*`) with the API key saved in Settings — no QR sign-in needed. Same bets, quotes, rules and auto-claim as the Agentic Wallet.
+- Pay bets from the **Prediction wallet** (MPC) or your **Binance Spot** USDT (CEX).
+- Needs on Binance: a Prediction account, Prediction SAS authorization in the Binance app, and the "Prediction Trading" permission on the API key.
+- Changing the connection method switches real betting off until it is switched on again.
+
 ## v3.2.5 — 2026-10-19
 
 - **Claim winnings now** button (Settings → Connect Binance → Prediction Market): redeems every winning position into the Agentic Wallet right away, besides the automatic claim every 5 minutes.

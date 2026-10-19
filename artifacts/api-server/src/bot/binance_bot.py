@@ -35,6 +35,7 @@ from binance_client import (  # noqa: E402
     INTERVAL_SECONDS, BinanceError, MarketData, SimulatedMarket, SimulatedTrader, SpotTrader,
 )
 from indicators import AI_KEY, INDICATORS, MIN_CANDLES, compute_votes, market_context  # noqa: E402
+from prediction_api import PredictionApiClient  # noqa: E402
 from prediction_market import (  # noqa: E402
     PredictionClient, PredictionError, match_slot_market, pick_outcome, symbol_words,
 )
@@ -103,6 +104,8 @@ DEFAULT_SETTINGS = {
     "liveDailyLossLimitUsdt": 50.0,
     # live venue: "prediction" = Binance Prediction Market (Agentic Wallet), "spot" = Binance Spot API keys
     "liveVenue": "prediction",
+    "predictionAuth": "wallet",      # "wallet" = Agentic Wallet (QR code), "apikey" = Prediction Trading REST API
+    "predictionFunding": "MPC",      # API key mode: pay from the Prediction wallet (MPC) or Binance Spot (CEX)
     "predictionSymbol": "BTCUSDT",
     "predictionQuery": "BTC",
     "predictionBetUsdt": 1.5,
@@ -954,10 +957,24 @@ class Bot:
                 self.add_error(f"Binance account check failed: {e}")
         return self.live_account
 
+    def build_prediction_client(self):
+        """Agentic Wallet CLI (QR sign-in) or the Prediction Trading REST API with the saved API key."""
+        s, c = self.settings, self.credentials or {}
+        if s.get("predictionAuth") == "apikey":
+            if c.get("apiKey") and c.get("apiSecret"):
+                self.pm = PredictionApiClient(c["apiKey"], c["apiSecret"], s.get("predictionFunding", "MPC"))
+            else:
+                self.pm = None
+        elif self.data_dir:
+            self.pm = PredictionClient(os.environ.get("BINANCE_BAW_DIR") or os.path.join(self.data_dir, "baw"))
+
     def refresh_prediction_wallet(self, quiet: bool = False) -> dict:
         self.pm_balance_at = time.time()
         if not self.pm:
-            return {"ok": False, "error": "bot not initialised"}
+            err = ("API key mode: save your Binance API key (with Prediction Trading permission) in Settings"
+                   if self.settings.get("predictionAuth") == "apikey" else "bot not initialised")
+            self.live_account = {"ok": False, "venue": "prediction", "error": err, "checkedAt": now_ms()}
+            return self.live_account
         try:
             self.pm_status = self.pm.status()
             if self.pm_status != "CONNECTED":
@@ -1110,10 +1127,10 @@ class Bot:
             self.load()
             self.credentials = msg.get("credentials") or {}
             self.build_trader()
-            if self.data_dir:
-                self.pm = PredictionClient(os.environ.get("BINANCE_BAW_DIR") or os.path.join(self.data_dir, "baw"))
+            self.build_prediction_client()
         elif cmd == "settings":
             old_venue = self.settings.get("liveVenue")
+            old_pm = (self.settings.get("predictionAuth"), self.settings.get("predictionFunding"))
             self.settings = merge_settings(DEFAULT_SETTINGS, msg.get("settings") or {})
             self.signals = {k: v for k, v in self.signals.items() if k in self.settings["symbols"]}
             if self.live_enabled and old_venue != self.settings.get("liveVenue"):
@@ -1121,10 +1138,18 @@ class Bot:
                 self.live_enabled = False
                 self.live_account = None
                 log("Live trading OFF: connection method changed", "trade")
+            if old_pm != (self.settings.get("predictionAuth"), self.settings.get("predictionFunding")):
+                self.build_prediction_client()
+                self.live_account = None
+                if self.live_enabled and self.settings.get("liveVenue") == "prediction":
+                    self.live_enabled = False
+                    log("Live betting OFF: Prediction connection changed — switch it on again", "trade")
             self.study_cache = None
         elif cmd == "credentials":
             self.credentials = msg.get("credentials") or {}
             self.build_trader()
+            if self.settings.get("predictionAuth") == "apikey":
+                self.build_prediction_client()
             self.live_account = None
             if not self.trader:
                 self.live_enabled = False
@@ -1151,7 +1176,9 @@ class Bot:
                     self.next_cycle = 0
                 if self.settings.get("liveVenue") == "prediction":
                     mode = "DRY RUN — quotes only" if self.settings["predictionDryRun"] else "REAL BETS"
-                    log(f"LIVE prediction betting ON on {self.settings['predictionSymbol']} ({mode})", "trade")
+                    how = "API key" if self.settings.get("predictionAuth") == "apikey" else "Agentic Wallet"
+                    coins = ", ".join(x.replace("USDT", "") for x in self.settings["symbols"])
+                    log(f"LIVE prediction betting ON on {coins} {self.settings['interval']} via {how} ({mode})", "trade")
                 else:
                     log(f"LIVE trading ON ({'testnet' if self.trader.testnet else 'REAL MONEY'})", "trade")
             else:

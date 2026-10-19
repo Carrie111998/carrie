@@ -45,7 +45,7 @@ def _http(method: str, url: str, headers: Optional[dict] = None, timeout: float 
         if e.code == 401 or "-2015" in body:
             msg += (" — check: (1) the Testnet switch matches the key (testnet.binance.vision keys need Testnet ON),"
                     " (2) the key's IP whitelist includes this server, (3) 'Enable Reading' and 'Enable Spot & Margin"
-                    " Trading' are ticked. For Binance Prediction Market no API key is needed — use Settings → Prediction Market.")
+                    " Trading' are ticked. For Prediction bets with this key also tick 'Prediction Trading'.")
         raise BinanceError(f"HTTP {e.code}: {msg}") from None
     except urllib.error.URLError as e:
         raise BinanceError(f"Network error: {e.reason}") from None

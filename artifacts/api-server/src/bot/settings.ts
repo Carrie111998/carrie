@@ -50,6 +50,10 @@ export interface BotSettings {
   liveMaxOpenPositions: number;
   liveDailyLossLimitUsdt: number;
   liveVenue: "prediction" | "spot";
+  /** how Prediction bets reach Binance: Agentic Wallet (QR) or the Prediction Trading API (API key) */
+  predictionAuth: "wallet" | "apikey";
+  /** API key mode: pay bets from the Prediction wallet (MPC) or the Binance Spot balance (CEX) */
+  predictionFunding: "MPC" | "CEX";
   predictionSymbol: string;
   predictionQuery: string;
   predictionBetUsdt: number;
@@ -129,6 +133,8 @@ export function defaultSettings(): BotSettings {
     liveMaxOpenPositions: 3,
     liveDailyLossLimitUsdt: 50,
     liveVenue: "prediction",
+    predictionAuth: "wallet",
+    predictionFunding: "MPC",
     predictionSymbol: "BTCUSDT",
     predictionQuery: "BTC",
     predictionBetUsdt: 1.5,
@@ -197,6 +203,8 @@ export function applyPatch(current: BotSettings, patch: unknown): BotSettings {
   }
   if (p.paperTradeMode === "fixed" || p.paperTradeMode === "percent") next.paperTradeMode = p.paperTradeMode;
   if (p.liveVenue === "prediction" || p.liveVenue === "spot") next.liveVenue = p.liveVenue;
+  if (p.predictionAuth === "wallet" || p.predictionAuth === "apikey") next.predictionAuth = p.predictionAuth;
+  if (p.predictionFunding === "MPC" || p.predictionFunding === "CEX") next.predictionFunding = p.predictionFunding;
   if (p.paperMode === "prediction" || p.paperMode === "spot") next.paperMode = p.paperMode;
   // Fixed bet size only: never scale bets with balance or after losses.
   next.paperTradeMode = "fixed";

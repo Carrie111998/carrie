@@ -51,6 +51,8 @@ export interface BotSettings {
   useCommunityLearning: boolean;
   runDurationMin: number;
   minPayout: number;
+  predictionAuth: "wallet" | "apikey";
+  predictionFunding: "MPC" | "CEX";
   minEdge: number;
   settingsVersion: number;
 }

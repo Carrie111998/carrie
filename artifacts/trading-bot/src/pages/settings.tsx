@@ -230,6 +230,72 @@ function ApiKeys() {
   );
 }
 
+/** Prediction betting through Binance's Prediction Trading REST API with the user's API key. */
+function PredictionApiKey({ funding, onFunding }: { funding: "MPC" | "CEX"; onFunding: (v: "MPC" | "CEX") => void }) {
+  const { run, state } = useBot();
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const acct = state?.status?.liveAccount;
+  const ok = acct?.venue === "prediction" && acct.ok;
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-secondary/60 p-3 text-xs space-y-1.5">
+        <div className="font-semibold text-foreground">Before it works, on Binance:</div>
+        <ol className="list-decimal pl-4 space-y-0.5 text-muted-foreground">
+          <li>Open a <b>Prediction account</b> in the Binance app (identity verification needed).</li>
+          <li>Complete <b>Prediction SAS authorization</b> in the Binance app — needed to place bets and claim.</li>
+          <li>In <b>API Management</b>, tick <b>Prediction Trading</b> on your API key (no withdrawals), and allow this server's IP.</li>
+        </ol>
+      </div>
+      <ApiKeys />
+      <Field label="Pay bets from">
+        <Choice
+          options={[
+            { v: "MPC" as const, label: "Prediction wallet", sub: "USDT in your Prediction account" },
+            { v: "CEX" as const, label: "Binance Spot", sub: "USDT in your Spot account" },
+          ]}
+          value={funding}
+          onChange={onFunding}
+        />
+      </Field>
+      <div className="rounded-md bg-secondary/60 px-3 py-2 text-xs">
+        Status:{" "}
+        {acct?.venue === "prediction" ? (
+          ok ? <b className="text-emerald-700">connected · {fmtUsd(acct.usdt)} USDT available</b> : <b className="text-red-700">{acct.error}</b>
+        ) : (
+          <span className="text-muted-foreground">not checked yet — press Refresh</span>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await run("Check failed", () => api("/prediction/refresh", { method: "POST" }));
+            setBusy(false);
+          }}
+        >
+          Refresh balance
+        </Button>
+        <Button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await run("Claim failed", async () => {
+              const r = await api<{ redeemed: number }>("/prediction/redeem", { method: "POST" });
+              toast({ title: r.redeemed ? `Claimed ${r.redeemed} winning position(s)` : "Nothing to claim right now" });
+            });
+            setBusy(false);
+          }}
+        >
+          Claim winnings now
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { settings, saveSettings, run, state } = useBot();
   const { user } = useAuth();
@@ -349,7 +415,36 @@ export default function Settings() {
             </button>
           ))}
         </div>
-        {draft.liveVenue === "prediction" ? <PredictionWallet /> : <ApiKeys />}
+        {draft.liveVenue === "prediction" ? (
+          <div className="space-y-4">
+            <Field label="Connect Prediction with" hint="Both place the same bets on Binance Prediction. Changing it switches real betting off until you switch it on again.">
+              <Choice
+                options={[
+                  { v: "wallet" as const, label: "QR code", sub: "Agentic Wallet" },
+                  { v: "apikey" as const, label: "My API key", sub: "Prediction Trading API" },
+                ]}
+                value={draft.predictionAuth}
+                onChange={(v) => {
+                  setDraft({ ...draft, predictionAuth: v });
+                  saveSettings({ predictionAuth: v });
+                }}
+              />
+            </Field>
+            {draft.predictionAuth === "apikey" ? (
+              <PredictionApiKey
+                funding={draft.predictionFunding}
+                onFunding={(v) => {
+                  setDraft({ ...draft, predictionFunding: v });
+                  saveSettings({ predictionFunding: v });
+                }}
+              />
+            ) : (
+              <PredictionWallet />
+            )}
+          </div>
+        ) : (
+          <ApiKeys />
+        )}
       </Panel>
 
       {draft.liveVenue === "prediction" ? (
