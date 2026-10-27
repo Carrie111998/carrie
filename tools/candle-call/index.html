@@ -1,0 +1,477 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{box-sizing:border-box}body{margin:0;padding:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Candle Call</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: one control strip, then two matching timeframe columns (5m | 15m) that stack on phones; method notes at the foot. */
+:root{
+  --bg:#f3f6f7; --panel:#ffffff; --ink:#13212a; --muted:#5a6b75; --line:#d9e2e6;
+  --accent:#0b7285; --accent-soft:#e3f2f4;
+  --up:#13844f; --up-soft:#e2f4ea; --down:#c9353b; --down-soft:#fbe7e8; --flat:#7a8790; --flat-soft:#eceff1;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0d1418; --panel:#141d22; --ink:#e4ecef; --muted:#8c9ba3; --line:#24323a;
+  --accent:#3fc6d6; --accent-soft:#12303a;
+  --up:#33c27a; --up-soft:#11301f; --down:#ff6268; --down-soft:#3a1719; --flat:#8c9ba3; --flat-soft:#1d272d;
+  color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0d1418; --panel:#141d22; --ink:#e4ecef; --muted:#8c9ba3; --line:#24323a;
+  --accent:#3fc6d6; --accent-soft:#12303a;
+  --up:#33c27a; --up-soft:#11301f; --down:#ff6268; --down-soft:#3a1719; --flat:#8c9ba3; --flat-soft:#1d272d;
+  color-scheme:dark }
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{margin:0;font-size:1.6rem;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.sub{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+.status{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--flat)}
+.dot.live{background:var(--up);box-shadow:0 0 0 3px var(--up-soft)}
+.dot.err{background:var(--down)}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chip{font:600 .85rem var(--f-mono);border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:999px;cursor:pointer}
+.chip:hover{border-color:var(--accent)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.chip:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{font:600 .85rem var(--f-body);border:1px solid var(--line);background:transparent;color:var(--ink);padding:7px 12px;border-radius:8px;cursor:pointer;margin-left:auto}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.notice{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--down);padding:12px 14px;border-radius:8px;font-size:.9rem}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:18px}
+.tf{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.tf-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.tf-name{font:700 .78rem var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.clock{font-size:.85rem;color:var(--muted)}
+.clock b{color:var(--ink);font-weight:700}
+.call{display:flex;align-items:center;gap:16px;padding:14px 16px;border-radius:10px;background:var(--flat-soft)}
+.call.up{background:var(--up-soft)} .call.down{background:var(--down-soft)}
+.arrow{font-size:2.4rem;line-height:1;width:44px;text-align:center;color:var(--flat)}
+.call.up .arrow{color:var(--up)} .call.down .arrow{color:var(--down)}
+.verdict{font-size:1.7rem;font-weight:700;letter-spacing:-.01em}
+.call.up .verdict{color:var(--up)} .call.down .verdict{color:var(--down)}
+.prob{font-size:.88rem;color:var(--muted)}
+.calls{display:grid;gap:10px}
+.clbl{font:600 .7rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.call.next{border:1px dashed var(--line)}
+.call.next .verdict{font-size:1.35rem}
+.meter{flex:1;min-width:90px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.bar{width:100%;max-width:180px;height:8px;border-radius:4px;background:var(--down);opacity:.85;position:relative;overflow:hidden}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--up)}
+.bar-lbl{font-size:.72rem;color:var(--muted);display:flex;justify-content:space-between;width:100%;max-width:180px}
+.mkt{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.mkt-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.mkt-body{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.mkt-odds{display:flex;align-items:baseline;gap:6px}
+.mkt-odds .v{font-size:1.3rem}
+.mkt-odds .k{margin-right:8px}
+.mkt-bar{flex:1;min-width:120px;max-width:none}
+.agree{font:600 .72rem var(--f-mono);padding:3px 8px;border-radius:999px;background:var(--flat-soft);color:var(--muted)}
+.agree.yes{background:var(--up-soft);color:var(--up)} .agree.no{background:var(--accent-soft);color:var(--accent)}
+.live{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.kv{display:flex;flex-direction:column;gap:2px;min-width:0}
+.k{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.v{font:600 .98rem var(--f-mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.v.up{color:var(--up)} .v.down{color:var(--down)}
+canvas{width:100%;height:170px;display:block}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.stats .v{font-size:1.1rem}
+.hint{font-size:.74rem;color:var(--muted)}
+.log h3{margin:0 0 8px;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.log-row{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font:600 .72rem var(--f-mono);padding:4px 7px;border-radius:6px;background:var(--flat-soft);color:var(--muted);white-space:nowrap}
+.pill.hit{background:var(--up-soft);color:var(--up)} .pill.miss{background:var(--down-soft);color:var(--down)}
+.empty{font-size:.82rem;color:var(--muted)}
+footer{font-size:.84rem;color:var(--muted);display:grid;gap:8px;max-width:75ch}
+footer p{margin:0}
+@media (max-width:520px){.live{grid-template-columns:repeat(2,minmax(0,1fr))}.btn{margin-left:0}
+  .call{flex-wrap:wrap;gap:6px 12px}.call>div:nth-child(2){flex:1;min-width:0}.call .meter{flex:1 1 100%;align-items:stretch}.call .bar,.call .bar-lbl{max-width:none}}
+@media (prefers-reduced-motion:no-preference){.bar i{transition:width .4s ease}}
+</style>
+
+</head><body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Candle Call</h1>
+      <p class="sub">Will the current 5-minute and 15-minute candle close above its open? A model call from live Binance candles for BTC, ETH and BNB, next to the live odds on Binance Prediction's 5-minute and 15-minute Up or Down rounds.</p>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="status">Connecting to Binance…</span></div>
+  </header>
+
+  <div class="controls" id="coins" role="group" aria-label="Coin"></div>
+
+  <div class="notice" id="notice" hidden></div>
+
+  <div class="cols" id="cols"></div>
+
+  <footer>
+    <p><b>How the call is made.</b> For each timeframe the page loads the last 1,000 Binance spot candles and trains a small logistic model on the 500 candles before now. Inputs come only from candles that have already closed: the last candle's body and where it closed in its range, 3- and 12-candle momentum, RSI(14), the EMA 9/21 gap, volume against its 20-candle average and the share of taker buying. The output is the chance the current candle closes above its open. Calls between 47% and 53% show as "No edge".</p>
+    <p><b>Two calls per timeframe.</b> <i>This round</i> is live: it starts from the model's call at the open and moves with the price — how far it is above or below the open, against the usual size of a move for the time left. Near the close it mostly follows the price. <i>Next round</i> is the model's call for the candle after this one, worked out as if the running candle closed now; it settles when this round closes and becomes the next round's opening call.</p>
+    <p><b>Hit rate</b> is a walk-forward test on the last 200 closed candles: each one was called by a model trained only on candles before it. Compare it with the up-candle share; short-timeframe direction is close to a coin flip, and a hit rate a few points either side of 50% is normal. The call log is kept in this browser only.</p>
+    <p><b>Binance Prediction market</b> shows the crowd's odds from the "BTC / ETH / BNB Up or Down 5m" and "… 15m" markets on <a href="https://www.binance.com/en/prediction/trending/up-down-crypto" target="_blank" rel="noopener">Binance Prediction</a>. Each round settles against its own reference price (the "Price to Beat" on the market card), which can differ slightly from the Binance spot candle's open, so a very close candle can settle differently. Market odds react to the price as the candle runs; the model's call uses only candles that had already closed when this one opened.</p>
+    <p>Data: Binance public market data (data-api.binance.vision), spot USDT pairs, and the public Binance Prediction page. Candle Call's small program on your computer fetches them for this page; the odds use your Binance API key. Not financial advice.</p>
+  </footer>
+</div>
+
+<script>
+(() => {
+"use strict";
+const COINS = ["BTC","ETH","BNB"]; // the coins Binance Prediction runs 5- and 15-minute Up/Down rounds for
+const TFS = [{id:"5m", ms:5*60e3, label:"5-minute"}, {id:"15m", ms:15*60e3, label:"15-minute"}];
+const API = "https://data-api.binance.vision/api/v3/klines";
+const REFRESH_MS = 30e3, TRAIN_W = 500, TEST_N = 200, RETRAIN_EVERY = 25, NO_EDGE = 0.03;
+
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+let coin = store.get("cc.coin", "BTC"); if (!COINS.includes(coin)) coin = "BTC";
+const state = {}; // tf.id -> {klines, pred, bt, at}
+const mkt = {data:null, at:0, err:null}; // Binance Prediction odds, keyed "BTC|5m"
+
+/* ---------- data access: this page's own local server (candle_call.py) fetches Binance for it ---------- */
+async function getJson(path){
+  let r;
+  try{ r = await fetch(path, {cache:"no-store"}); }catch(e){ throw {code:"offline"}; }
+  const d = await r.json().catch(() => null);
+  if (!r.ok) throw {code:"upstream", message:(d && d.error) || `HTTP ${r.status}`};
+  return d;
+}
+async function getKlines(sym, interval){
+  return parseK(await getJson(`/api/klines?coin=${sym}&interval=${interval}`));
+}
+// Binance Prediction odds for the running rounds, keyed "BTC|5m" (needs a Binance API key on the local server)
+const PRED_URL = "https://www.binance.com/en/prediction/trending/up-down-crypto";
+const PRED_COINS = ["BTC","ETH","BNB"];
+async function getMarkets(){
+  const d = await getJson("/api/odds");
+  if (d.error === "no_key") throw {code:"no_key"};
+  if (!Object.keys(d.markets || {}).length) throw {code:"pred_parse", message:d.error};
+  const out = {};
+  for (const [k, e] of Object.entries(d.markets)) out[k] = {up:e.up, down:e.down, beat:e.beat, people:null, vol:null};
+  return out;
+}
+function parseK(a){
+  if (!Array.isArray(a)) throw {code:"parse"};
+  return a.map(r => ({t:+r[0], o:+r[1], h:+r[2], l:+r[3], c:+r[4], v:+r[5], T:+r[6], tb:+r[9]}));
+}
+
+/* ---------- indicators and model ---------- */
+function ema(x, n){ const k = 2/(n+1), out = new Array(x.length); let e = x[0]; for (let i=0;i<x.length;i++){ e = i ? x[i]*k + e*(1-k) : x[0]; out[i]=e; } return out; }
+function indicators(K){
+  const c = K.map(k=>k.c), n = K.length;
+  const e9 = ema(c,9), e21 = ema(c,21);
+  const rsi = new Array(n).fill(50), atr = new Array(n).fill(0), vavg = new Array(n).fill(0);
+  let ag=0, al=0, a=0, vs=0;
+  for (let i=1;i<n;i++){
+    const d = c[i]-c[i-1], g = Math.max(d,0), l = Math.max(-d,0);
+    if (i<=14){ ag+=g/14; al+=l/14; } else { ag=(ag*13+g)/14; al=(al*13+l)/14; }
+    rsi[i] = al===0 ? 100 : 100 - 100/(1+ag/al);
+    const tr = Math.max(K[i].h-K[i].l, Math.abs(K[i].h-c[i-1]), Math.abs(K[i].l-c[i-1]));
+    a = i<=14 ? (a*(i-1)+tr)/i : (a*13+tr)/14; atr[i]=a;
+  }
+  for (let i=0;i<n;i++){ vs += K[i].v; if (i>=20) vs -= K[i-20].v; vavg[i] = vs/Math.min(i+1,20); }
+  return {e9,e21,rsi,atr,vavg};
+}
+function feat(K, I, i){
+  const k = K[i], A = I.atr[i] || 1e-9, rng = k.h-k.l;
+  return [
+    (k.c-k.o)/A,
+    (k.c-K[i-3].c)/A,
+    (k.c-K[i-12].c)/A,
+    (I.rsi[i]-50)/50,
+    (I.e9[i]-I.e21[i])/A,
+    Math.log((k.v+1e-9)/(I.vavg[i]+1e-9)),
+    k.v>0 ? k.tb/k.v-0.5 : 0,
+    rng>0 ? (k.c-k.l)/rng-0.5 : 0
+  ];
+}
+function train(X, y){
+  const m = X.length, d = X[0].length, mu = new Array(d).fill(0), sd = new Array(d).fill(0);
+  for (const x of X) for (let j=0;j<d;j++) mu[j]+=x[j]/m;
+  for (const x of X) for (let j=0;j<d;j++) sd[j]+=(x[j]-mu[j])**2/m;
+  for (let j=0;j<d;j++) sd[j] = Math.sqrt(sd[j]) || 1;
+  const Z = X.map(x => x.map((v,j)=>Math.max(-4,Math.min(4,(v-mu[j])/sd[j]))));
+  const w = new Array(d).fill(0); let b = 0;
+  const lr = 0.2, l2 = 0.02;
+  for (let it=0; it<250; it++){
+    const gw = new Array(d).fill(0); let gb = 0;
+    for (let s=0;s<m;s++){
+      let z=b; for (let j=0;j<d;j++) z+=w[j]*Z[s][j];
+      const e = 1/(1+Math.exp(-z)) - y[s];
+      gb+=e; for (let j=0;j<d;j++) gw[j]+=e*Z[s][j];
+    }
+    b -= lr*gb/m; for (let j=0;j<d;j++) w[j] -= lr*(gw[j]/m + l2*w[j]);
+  }
+  return x => { let z=b; for (let j=0;j<d;j++) z+=w[j]*Math.max(-4,Math.min(4,(x[j]-mu[j])/sd[j])); return 1/(1+Math.exp(-z)); };
+}
+function analyse(K){
+  // K's last candle is the one still open. Sample i = features after candle i closes, label = candle i+1 up.
+  const I = indicators(K), n = K.length, first = 30, lastLabeled = n-3;
+  const X = [], y = [], idx = [];
+  for (let i=first;i<=lastLabeled;i++){ X.push(feat(K,I,i)); y.push(K[i+1].c > K[i+1].o ? 1 : 0); idx.push(i); }
+  const m = X.length, testN = Math.min(TEST_N, Math.max(0, m - 100));
+  let hits=0, conf=0, confHits=0, ups=0, model=null;
+  for (let s=m-testN; s<m; s++){
+    if (!model || (s-(m-testN)) % RETRAIN_EVERY === 0){ const a = Math.max(0, s-TRAIN_W); model = train(X.slice(a,s), y.slice(a,s)); }
+    const p = model(X[s]), call = p>=0.5 ? 1 : 0;
+    if (call===y[s]) hits++; ups += y[s];
+    if (Math.abs(p-0.5) >= NO_EDGE){ conf++; if (call===y[s]) confHits++; }
+  }
+  const a = Math.max(0, m-TRAIN_W), live = train(X.slice(a), y.slice(a));
+  const p = live(feat(K,I,n-2));
+  // next round: the running candle taken as it stands now (provisional until it closes)
+  const pNext = live(feat(K,I,n-1));
+  // typical size of one candle's open→close move, for the live chance of the running round
+  const moves = K.slice(-101, -1).map(k => Math.log(k.c/k.o)), mu = moves.reduce((a,v)=>a+v,0)/moves.length;
+  const sigma = Math.sqrt(moves.reduce((a,v)=>a+(v-mu)**2,0)/moves.length) || 1e-3;
+  return {p, pNext, sigma, bt:{n:testN, hit:testN?hits/testN:null, up:testN?ups/testN:null, conf, confHit:conf?confHits/conf:null}};
+}
+
+/* ---------- call log (this browser only) ---------- */
+function logKey(){ return "cc.log"; }
+function recordAndResolve(sym, tf, K, p){
+  const log = store.get(logKey(), {});
+  const cur = K[K.length-1], key = `${sym}|${tf}|${cur.t}`;
+  if (!log[key]) log[key] = {p:+p.toFixed(4)};
+  const byT = new Map(K.slice(0,-1).map(k=>[k.t,k]));
+  for (const [k,e] of Object.entries(log)){
+    const [s,f,t] = k.split("|");
+    if (s===sym && f===tf && e.r==null && byT.has(+t)){ const c = byT.get(+t); e.r = c.c > c.o ? 1 : 0; }
+  }
+  const keys = Object.keys(log).sort((a,b)=>+a.split("|")[2] - +b.split("|")[2]);
+  while (keys.length > 400) delete log[keys.shift()];
+  store.set(logKey(), log);
+}
+function logFor(sym, tf){
+  const log = store.get(logKey(), {});
+  return Object.entries(log).filter(([k])=>k.startsWith(`${sym}|${tf}|`))
+    .map(([k,e])=>({t:+k.split("|")[2], ...e})).sort((a,b)=>b.t-a.t);
+}
+
+/* ---------- rendering ---------- */
+const $ = s => document.querySelector(s);
+const fmtP = v => { if (!isFinite(v)) return "–"; const d = v>=1000?2:v>=1?3:v>=0.01?5:7; return v.toLocaleString("en-US",{minimumFractionDigits:Math.min(d,2),maximumFractionDigits:d}); };
+const pct = (v,d=1) => v==null ? "–" : (v*100).toFixed(d)+"%";
+const hhmm = t => new Date(t).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+function callOf(p){ return Math.abs(p-0.5) < NO_EDGE ? "flat" : p>0.5 ? "up" : "down"; }
+
+function buildCoins(){
+  $("#coins").innerHTML = COINS.map(c=>`<button class="chip" id="coin-${c}" aria-pressed="${c===coin}">${c}</button>`).join("") +
+    `<button class="btn" id="refresh">Refresh now</button>`;
+  COINS.forEach(c => $(`#coin-${c}`).onclick = () => { if (c===coin) return; coin=c; store.set("cc.coin",c);
+    COINS.forEach(x=>$(`#coin-${x}`).setAttribute("aria-pressed", x===coin)); for (const k in state) delete state[k]; renderAll(); refresh(); });
+  $("#refresh").onclick = () => refresh();
+}
+function buildCols(){
+  $("#cols").innerHTML = TFS.map(tf => `
+  <section class="tf" id="tf-${tf.id}" aria-label="${tf.label} candle">
+    <div class="tf-head"><span class="tf-name">${tf.id} candle · ${tf.label}</span><span class="clock mono" data-f="clock">–</span></div>
+    <div class="calls">
+      <div class="call" data-f="call"><div class="arrow" data-f="arrow">·</div>
+        <div><div class="clbl" data-f="clbl">This round · live</div><div class="verdict" data-f="verdict">Loading</div><div class="prob" data-f="prob">Fetching candles…</div></div>
+        <div class="meter"><div class="bar"><i data-f="bar" style="width:50%"></i></div><div class="bar-lbl mono"><span>up</span><span>down</span></div></div></div>
+      <div class="call next" data-f="ncall"><div class="arrow" data-f="narrow">·</div>
+        <div><div class="clbl" data-f="nlbl">Next round</div><div class="verdict" data-f="nverdict">–</div><div class="prob" data-f="nprob">Waiting for candles…</div></div>
+        <div class="meter"><div class="bar"><i data-f="nbar" style="width:50%"></i></div><div class="bar-lbl mono"><span>up</span><span>down</span></div></div></div>
+    </div>
+    <div class="mkt">
+      <div class="mkt-head"><span class="k">Binance Prediction market</span><span class="agree" data-f="agree" hidden></span></div>
+      <div class="mkt-body" data-f="mktbody" hidden>
+        <div class="mkt-odds"><span class="v up" data-f="mup">–</span><span class="k">Up</span><span class="v down" data-f="mdown">–</span><span class="k">Down</span></div>
+        <div class="bar mkt-bar"><i data-f="mbar" style="width:50%"></i></div>
+      </div>
+      <div class="hint" data-f="mktnote">Loading market odds…</div>
+    </div>
+    <div class="live">
+      <div class="kv"><span class="k">Open</span><span class="v" data-f="open">–</span></div>
+      <div class="kv"><span class="k">Now</span><span class="v" data-f="now">–</span></div>
+      <div class="kv"><span class="k">Since open</span><span class="v" data-f="chg">–</span></div>
+      <div class="kv"><span class="k">Call so far</span><span class="v" data-f="track">–</span></div>
+    </div>
+    <canvas data-f="chart" aria-label="Last 48 candles"></canvas>
+    <div class="stats">
+      <div class="kv"><span class="k">Hit rate</span><span class="v" data-f="hit">–</span><span class="hint" data-f="hitn">last 200 candles</span></div>
+      <div class="kv"><span class="k">Up candles</span><span class="v" data-f="base">–</span><span class="hint">same 200 candles</span></div>
+      <div class="kv"><span class="k">Hit rate, edge calls</span><span class="v" data-f="conf">–</span><span class="hint" data-f="confn">calls outside 47–53%</span></div>
+    </div>
+    <div class="log"><h3>Your call log</h3><div class="log-row" data-f="log"></div><div class="hint" data-f="logsum"></div></div>
+  </section>`).join("");
+}
+const F = (tf, f) => document.querySelector(`#tf-${tf} [data-f="${f}"]`);
+
+function erf(x){ // Abramowitz–Stegun 7.1.26
+  const t = 1/(1+0.3275911*Math.abs(x)), y = 1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+  return x >= 0 ? y : -y;
+}
+// Chance the running round closes Up: where price stands against the open, given the time left and the usual
+// size of a move, plus the model's opening lean, which counts for less as the round runs out.
+function liveChance(tf){
+  const s = state[tf.id]; if (!s) return null;
+  const cur = s.klines[s.klines.length-1], frac = Math.max(0, Math.min(1, (cur.t + tf.ms - Date.now())/tf.ms));
+  const sd = s.pred.sigma * Math.sqrt(Math.max(frac, 1e-3)), z = Math.log(cur.c/cur.o)/sd;
+  const pRw = 0.5*(1+erf(z/Math.SQRT2)), lean = (s.pred.p-0.5)*frac*4*pRw*(1-pRw);
+  return {up: Math.min(0.99, Math.max(0.01, pRw+lean)), frac, cur};
+}
+function renderLive(tf){
+  const L = liveChance(tf); if (!L) return;
+  const s = state[tf.id], el = f => F(tf.id,f), c = callOf(L.up), c0 = callOf(s.pred.p), chg = (L.cur.c-L.cur.o)/L.cur.o;
+  el("call").className = "call " + c;
+  el("arrow").textContent = c==="up" ? "▲" : c==="down" ? "▼" : "–";
+  el("clbl").textContent = `This round · ${hhmm(L.cur.t)}–${hhmm(L.cur.t+tf.ms)} · live`;
+  el("verdict").textContent = c==="up" ? "Up" : c==="down" ? "Down" : "Too close";
+  el("prob").textContent = `${(L.up*100).toFixed(1)}% chance it closes above its open · price ${chg>=0?"+":""}${(chg*100).toFixed(3)}% since open · model at open: ${c0==="up"?"Up":c0==="down"?"Down":"no edge"} ${(s.pred.p*100).toFixed(0)}%`;
+  el("bar").style.width = (L.up*100).toFixed(1)+"%";
+}
+function renderTf(tf){
+  const s = state[tf.id];
+  const set = (f, txt, cls) => { const el = F(tf.id,f); el.textContent = txt; if (cls!==undefined) el.className = el.className.split(" ")[0] + (cls?" "+cls:""); };
+  if (!s){ set("verdict","Loading"); set("prob","Fetching candles…"); F(tf.id,"call").className="call"; F(tf.id,"arrow").textContent="·";
+    set("nverdict","–"); set("nprob","Waiting for candles…"); F(tf.id,"ncall").className="call next"; F(tf.id,"narrow").textContent="·";
+    ["open","now","chg","track","hit","base","conf"].forEach(f=>set(f,"–")); F(tf.id,"log").innerHTML=""; set("logsum",""); drawChart(tf, null); renderMarket(tf); return; }
+  const K = s.klines, cur = K[K.length-1], p = s.pred.p, c = callOf(p);
+  renderLive(tf);
+  const pn = s.pred.pNext, cn = callOf(pn);
+  F(tf.id,"ncall").className = "call next " + cn;
+  F(tf.id,"narrow").textContent = cn==="up" ? "▲" : cn==="down" ? "▼" : "–";
+  set("nlbl", `Next round · ${hhmm(cur.t+tf.ms)}–${hhmm(cur.t+2*tf.ms)} · provisional`);
+  set("nverdict", cn==="up" ? "Up" : cn==="down" ? "Down" : "No edge");
+  set("nprob", `${(pn*100).toFixed(1)}% chance it closes above its open · firms up when this round closes`);
+  F(tf.id,"nbar").style.width = (pn*100).toFixed(1)+"%";
+  const chg = (cur.c-cur.o)/cur.o;
+  set("open", fmtP(cur.o)); set("now", fmtP(cur.c));
+  set("chg", (chg>=0?"+":"")+(chg*100).toFixed(3)+"%", chg>0?"up":chg<0?"down":"");
+  if (c==="flat") set("track","No call",""); else { const right = (c==="up") === (cur.c>cur.o); set("track", right?"Right":"Wrong", right?"up":"down"); }
+  const b = s.pred.bt;
+  set("hit", pct(b.hit)); set("hitn", `last ${b.n} candles`); set("base", pct(b.up));
+  set("conf", pct(b.confHit)); set("confn", `${b.conf} of ${b.n} were edge calls`);
+  const L = logFor(coin, tf.id), done = L.filter(e=>e.r!=null && callOf(e.p)!=="flat");
+  F(tf.id,"log").innerHTML = L.slice(0,12).map(e => {
+    const cc = callOf(e.p), sym = cc==="up"?"▲":cc==="down"?"▼":"–";
+    const res = e.r==null || cc==="flat" ? "" : ((cc==="up")===(e.r===1) ? " hit" : " miss");
+    const tag = e.r==null ? "open" : cc==="flat" ? "skip" : res===" hit" ? "✓" : "✗";
+    return `<span class="pill${res}" title="${(e.p*100).toFixed(1)}% up">${hhmm(e.t)} ${sym} ${tag}</span>`; }).join("") || `<span class="empty">Calls appear here as candles open while this page is open.</span>`;
+  const h = done.filter(e=>(callOf(e.p)==="up")===(e.r===1)).length;
+  set("logsum", done.length ? `${h} of ${done.length} settled calls right (${pct(h/done.length,0)}) on this device` : "");
+  drawChart(tf, K.slice(-48), c);
+  renderMarket(tf);
+}
+function renderMarket(tf){
+  const body = F(tf.id,"mktbody"), note = F(tf.id,"mktnote"), agree = F(tf.id,"agree");
+  const hide = msg => { body.hidden = true; agree.hidden = true; note.innerHTML = msg; };
+  if (!PRED_COINS.includes(coin)) return hide(`Binance Prediction has Up/Down markets for ${PRED_COINS.join(", ")} only.`);
+  if (mkt.err) return hide(mkt.err);
+  const e = mkt.data && mkt.data[`${coin}|${tf.id}`];
+  if (!e) return hide(mkt.data ? `No live ${coin} ${tf.id} market on the page right now.` : "Loading market odds…");
+  body.hidden = false;
+  F(tf.id,"mup").textContent = pct(e.up,0); F(tf.id,"mdown").textContent = pct(e.down,0);
+  F(tf.id,"mbar").style.width = (e.up/(e.up+e.down||1)*100).toFixed(1)+"%";
+  const s = state[tf.id], cur = s && s.klines[s.klines.length-1];
+  const bits = [];
+  if (e.beat != null) bits.push(`Price to beat ${fmtP(e.beat)}`);
+  if (e.people != null) bits.push(`${e.people.toLocaleString()} traders`);
+  if (e.vol) bits.push(`${e.vol} 24h volume`);
+  if (cur && e.beat != null && Math.abs(e.beat-cur.o)/cur.o > 0.001) bits.push("may be a different candle than the one above");
+  if (mkt.at) bits.push(`read ${new Date(mkt.at).toLocaleTimeString()}`);
+  note.textContent = bits.join(" · ");
+  if (s){
+    const lc = liveChance(tf), mc = callOf(lc ? lc.up : s.pred.p), crowd = e.up > e.down ? "up" : e.up < e.down ? "down" : "flat";
+    agree.hidden = false;
+    if (mc === "flat") { agree.className = "agree"; agree.textContent = `Model: no edge · market ${crowd}`; }
+    else if (mc === crowd) { agree.className = "agree yes"; agree.textContent = "Model agrees"; }
+    else { agree.className = "agree no"; agree.textContent = "Model disagrees"; }
+  } else agree.hidden = true;
+}
+function css(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function drawChart(tf, K, call){
+  const cv = F(tf.id,"chart"), dpr = window.devicePixelRatio||1, W = cv.clientWidth, H = cv.clientHeight;
+  if (!W) return;
+  cv.width = W*dpr; cv.height = H*dpr; const g = cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  if (!K || !K.length) return;
+  const up = css("--up"), dn = css("--down"), line = css("--line"), muted = css("--muted"), acc = css("--accent");
+  const padR = 64, padT = 8, padB = 18, w = W-padR;
+  let lo = Math.min(...K.map(k=>k.l)), hi = Math.max(...K.map(k=>k.h)); const m = (hi-lo)*0.06 || hi*0.001; lo-=m; hi+=m;
+  const Y = v => padT + (hi-v)/(hi-lo)*(H-padT-padB), step = w/K.length, bw = Math.max(1, step*0.62);
+  g.font = `11px ${css("--f-mono")}`; g.textBaseline = "middle";
+  for (let i=0;i<=3;i++){ const v = lo + (hi-lo)*i/3, y = Y(v); g.strokeStyle=line; g.lineWidth=1; g.beginPath(); g.moveTo(0,y+.5); g.lineTo(w,y+.5); g.stroke(); g.fillStyle=muted; g.fillText(fmtP(v), w+6, y); }
+  K.forEach((k,i) => {
+    const x = i*step + step/2, col = k.c>=k.o ? up : dn, last = i===K.length-1;
+    g.strokeStyle = col; g.fillStyle = col; g.globalAlpha = last ? 1 : 0.85;
+    g.beginPath(); g.moveTo(x+.5,Y(k.h)); g.lineTo(x+.5,Y(k.l)); g.stroke();
+    const y1 = Y(Math.max(k.o,k.c)), y2 = Y(Math.min(k.o,k.c)); g.fillRect(x-bw/2, y1, bw, Math.max(1,y2-y1));
+  });
+  g.globalAlpha = 1;
+  const cur = K[K.length-1], x = (K.length-1)*step + step/2;
+  g.strokeStyle = acc; g.setLineDash([3,3]); g.beginPath(); g.moveTo(0,Y(cur.o)+.5); g.lineTo(w,Y(cur.o)+.5); g.stroke(); g.setLineDash([]);
+  g.fillStyle = acc; g.textBaseline="alphabetic"; g.fillText("open", 2, Y(cur.o)-4);
+  if (call && call!=="flat"){ g.fillStyle = call==="up"?up:dn; const ty = call==="up" ? Y(cur.h)-6 : Y(cur.l)+6, d = call==="up"?-1:1;
+    g.beginPath(); g.moveTo(x, ty+d*7); g.lineTo(x-5, ty); g.lineTo(x+5, ty); g.closePath(); g.fill(); }
+  g.fillStyle = muted; g.textBaseline="alphabetic"; g.fillText(hhmm(K[0].t), 0, H-3); const lt = hhmm(cur.t); g.fillText(lt, w - g.measureText(lt).width, H-3);
+}
+function renderAll(){ TFS.forEach(renderTf); tick(); }
+function tick(){
+  TFS.forEach(tf => { const s = state[tf.id], el = F(tf.id,"clock"); if (!s){ el.textContent="–"; return; }
+    const cur = s.klines[s.klines.length-1], left = Math.max(0, cur.t + tf.ms - Date.now());
+    renderLive(tf);
+    el.innerHTML = `${hhmm(cur.t)}–${hhmm(cur.t+tf.ms)} · closes in <b>${Math.floor(left/60e3)}:${String(Math.floor(left/1e3)%60).padStart(2,"0")}</b>`;
+    if (left===0 && !s.closing){ s.closing = true; setTimeout(refresh, 2500); } });
+}
+
+/* ---------- refresh loop ---------- */
+let busy = false;
+function setStatus(kind, text){ $("#dot").className = "dot " + (kind||""); $("#status").textContent = text; }
+function showNotice(html){ const n = $("#notice"); n.hidden = !html; n.innerHTML = html || ""; }
+function explain(e){
+  const code = e && e.code, msg = e && e.message ? String(e.message).slice(0,140).replace(/</g,"&lt;") : "";
+  if (code==="offline") return "Candle Call on your computer is not answering. Start it again with <b>python3 candle_call.py</b>, then press <b>Refresh now</b>.";
+  if (code==="parse") return "Binance answered without candle data. Try again in a minute.";
+  return "Could not reach Binance just now" + (msg ? ` (${msg})` : "") + ". The page will try again.";
+}
+async function refreshMarkets(sym){
+  try{
+    const data = await getMarkets();
+    mkt.data = data; mkt.at = Date.now(); mkt.err = null;
+  }catch(e){
+    const code = e && e.code;
+    mkt.err = code==="no_key"
+      ? "Binance Prediction odds need your Binance API key (with \"Prediction Trading\") on the computer running Candle Call: set BINANCE_API_KEY and BINANCE_API_SECRET, then restart it."
+      : code==="offline" ? "Candle Call on your computer is not answering. Is it still running?"
+      : code==="pred_parse" ? "Binance did not return the running rounds" + (e && e.message ? ` (${String(e.message).slice(0,140)})` : "") + ". Check the API key's Prediction Trading permission and IP whitelist."
+      : "Could not reach Binance Prediction just now. The page will try again.";
+  }
+  TFS.forEach(renderMarket);
+}
+async function refresh(){
+  if (busy) return; busy = true;
+  const sym = coin; setStatus("", `Updating ${sym}…`);
+  let ok = 0, lastErr = null;
+  for (const tf of TFS){
+    try{
+      const K = await getKlines(sym, tf.id);
+      if (sym !== coin) break;
+      if (K.length < 400) throw {code:"parse"};
+      const pred = analyse(K);
+      recordAndResolve(sym, tf.id, K, pred.p);
+      state[tf.id] = {klines:K, pred, at:Date.now(), sym}; ok++;
+      renderTf(tf);
+    }catch(e){ lastErr = e; }
+  }
+  if (sym === coin && PRED_COINS.includes(sym)) await refreshMarkets(sym);
+  busy = false;
+  if (ok===TFS.length){ showNotice(""); setStatus("live", `${sym}/USDT · updated ${new Date().toLocaleTimeString()} · live from Binance`); }
+  else { showNotice(explain(lastErr)); setStatus("err", ok ? "Partly updated" : "Not connected"); }
+  tick();
+}
+
+buildCoins(); buildCols(); renderAll();
+setInterval(tick, 1000);
+setInterval(() => { if (!document.hidden) refresh(); }, REFRESH_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+addEventListener("resize", () => TFS.forEach(tf => state[tf.id] && drawChart(tf, state[tf.id].klines.slice(-48), callOf(state[tf.id].pred.p))));
+refresh();
+})();
+</script>
+</body></html>
